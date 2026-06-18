@@ -1,3 +1,4 @@
+import os
 
 
 class ProcFS:
@@ -45,3 +46,9 @@ class ProcFS:
             if sep:
                 result[key] = value.strip()
         return result
+    def list_pids(self):
+        """Generador que lista los PID de los procesos en /proc (carpetas numéricas)."""
+        with os.scandir(self.procfs_path) as it:
+            for entry in it:
+                if entry.is_dir() and entry.name.isdigit():
+                    yield int(entry.name)

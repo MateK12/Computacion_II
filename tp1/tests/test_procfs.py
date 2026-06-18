@@ -1,5 +1,8 @@
+import os
 import unittest
 from src.procfs import ProcFS
+import tempfile
+
 class TestProcfs(unittest.TestCase):
     def test_procfs(self):
         proc = ProcFS('/proc')
@@ -65,3 +68,17 @@ class TestProcfs(unittest.TestCase):
     def test_parse_status_ignora_lineas_sin_clave(self):
         parsed = ProcFS.parse_status("Name:\tzsh\n\nlinea basura sin separador\n")
         self.assertEqual(parsed, {'Name': 'zsh'})
+    def test_list_pids(self):
+        proc = ProcFS('/proc')
+        pids = list(proc.list_pids())
+        self.assertIn(os.getpid(), pids)
+
+    def test_list_pid_only_dirs_numeric(self):
+      with tempfile.TemporaryDirectory() as tmp:
+          os.mkdir(os.path.join(tmp, "1234"))
+          os.mkdir(os.path.join(tmp, "5678"))
+          os.mkdir(os.path.join(tmp, "bus"))      
+          open(os.path.join(tmp, "cpuinfo"), "w").close()  
+          proc = ProcFS(tmp)
+          pids = sorted(proc.list_pids()) #ordenar para que ande assertEqual   
+          self.assertEqual(pids, [1234, 5678])
