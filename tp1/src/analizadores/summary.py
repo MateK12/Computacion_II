@@ -13,10 +13,10 @@ class AnalyzerSummary:
         """Arma la entrada de resumen de un proceso a partir de su status crudo."""
         return {
             "name": status["Name"],
-            "state": status["State"][0],   # "S (sleeping)" -> "S"
+            "state": status["State"][0],  
             "ppid": int(status["PPid"]),
-            "uid": status["Uid"],
-            "gid": status["Gid"],
+            "uid": int(status["Uid"].split()[0]),
+            "gid": int(status["Gid"].split()[0]),
             "threads": int(status["Threads"]),
         }
 
@@ -29,7 +29,6 @@ class AnalyzerSummary:
             except (FileNotFoundError, ProcessLookupError):
                 continue  # el proceso murió entre el listado y la lectura; lo salteamos
             data[pid] = self._extract(status)
-        # una sola asignación al proxy: reemplazo entero (evita el gotcha del Manager.dict)
         self.snapshot["summary"] = {"ts": time.time(), "data": data}
 
     def analyze(self):
