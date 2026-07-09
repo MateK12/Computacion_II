@@ -103,7 +103,7 @@ class TestProcfs(unittest.TestCase):
     def test_fd_type_infers_correctly(self):
         proc = ProcFS('/proc')
         with patch('os.readlink') as mock_readlink:
-            mock_readlink.return_value = '/dev/null'
+            mock_readlink.return_value = '/dev/nullgit'
             fd_links = proc.read_fd_links(os.getpid())
             fd_info = fd_links[0]  # stdin
             self.assertEqual(fd_info['type'], 'file')
