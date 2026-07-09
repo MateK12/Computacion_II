@@ -1,5 +1,6 @@
 import os
 import unittest
+from unittest.mock import patch
 from src.procfs import ProcFS
 import tempfile
 
@@ -82,3 +83,33 @@ class TestProcfs(unittest.TestCase):
           proc = ProcFS(tmp)
           pids = sorted(proc.list_pids()) #ordenar para que ande assertEqual   
           self.assertEqual(pids, [1234, 5678])
+    #region file descriptors
+    def test_read_fd_links(self):
+        proc = ProcFS('/proc')
+        fd_links = proc.read_fd_links(os.getpid())
+        self.assertIsInstance(fd_links, dict)
+        self.assertIn(0, fd_links)  # stdin
+        self.assertIn(1, fd_links)  # stdout
+        self.assertIn(2, fd_links)  # stderr
+    def test_returns_fd_info(self):
+        proc = ProcFS('/proc')
+        #mockear os.readlink para devolver un destino conocido
+        with patch('os.readlink') as mock_readlink:
+            mock_readlink.return_value = '/dev/null'
+            fd_links = proc.read_fd_links(os.getpid())
+            fd_info = fd_links[0]  # stdin
+            self.assertEqual(fd_info['type'], 'file')
+            self.assertEqual(fd_info['dest'], '/dev/null')
+    def test_fd_type_infers_correctly(self):
+        proc = ProcFS('/proc')
+        with patch('os.readlink') as mock_readlink:
+            mock_readlink.return_value = '/dev/null'
+            fd_links = proc.read_fd_links(os.getpid())
+            fd_info = fd_links[0]  # stdin
+            self.assertEqual(fd_info['type'], 'file')
+            self.assertEqual(fd_info['dest'], '/dev/null')
+
+        fd_links = proc.read_fd_links(os.getpid())
+        fd_info = fd_links[0]  # stdin
+        self.assertEqual(fd_info['type'], 'file')
+    #endregion
