@@ -1,6 +1,5 @@
 import os
 import unittest
-from unittest.mock import patch
 from src.procfs import ProcFS
 import tempfile
 
@@ -85,31 +84,26 @@ class TestProcfs(unittest.TestCase):
           self.assertEqual(pids, [1234, 5678])
     #region file descriptors
     def test_read_fd_links(self):
-        proc = ProcFS('/proc')
-        fd_links = proc.read_fd_links(os.getpid())
-        self.assertIsInstance(fd_links, dict)
-        self.assertIn(0, fd_links)  # stdin
-        self.assertIn(1, fd_links)  # stdout
-        self.assertIn(2, fd_links)  # stderr
-    def test_returns_fd_info(self):
-        proc = ProcFS('/proc')
-        #mockear os.readlink para devolver un destino conocido
-        with patch('os.readlink') as mock_readlink:
-            mock_readlink.return_value = '/dev/null'
-            fd_links = proc.read_fd_links(os.getpid())
-            fd_info = fd_links[0]  # stdin
-            self.assertEqual(fd_info['type'], 'file')
-            self.assertEqual(fd_info['dest'], '/dev/null')
-    def test_fd_type_infers_correctly(self):
-        proc = ProcFS('/proc')
-        with patch('os.readlink') as mock_readlink:
-            mock_readlink.return_value = '/dev/nullgit'
-            fd_links = proc.read_fd_links(os.getpid())
-            fd_info = fd_links[0]  # stdin
-            self.assertEqual(fd_info['type'], 'file')
-            self.assertEqual(fd_info['dest'], '/dev/null')
+        # Fabricamos un /proc falso: tmp/<pid>/fd/ con symlinks reales, tal como
+        # los tendría un proceso vivo. read_fd_links solo lee el destino crudo.
+        with tempfile.TemporaryDirectory() as tmp:
+            fd_dir = os.path.join(tmp, "1234", "fd")
+            os.makedirs(fd_dir)
+            os.symlink("/dev/null", os.path.join(fd_dir, "0"))
+            os.symlink("socket:[12345]", os.path.join(fd_dir, "3"))
+            proc = ProcFS(tmp)
+            fd_links = proc.read_fd_links(1234)
+            self.assertEqual(fd_links, {0: "/dev/null", 3: "socket:[12345]"})
 
-        fd_links = proc.read_fd_links(os.getpid())
-        fd_info = fd_links[0]  # stdin
-        self.assertEqual(fd_info['type'], 'file')
+    def test_read_fd_links_ignora_no_symlinks(self):
+        # En /proc/<pid>/fd todo es symlink, pero por robustez read_fd_links
+        # filtra con is_symlink(): un archivo regular en el dir no debe aparecer.
+        with tempfile.TemporaryDirectory() as tmp:
+            fd_dir = os.path.join(tmp, "1234", "fd")
+            os.makedirs(fd_dir)
+            os.symlink("/dev/null", os.path.join(fd_dir, "0"))
+            open(os.path.join(fd_dir, "basura"), "w").close()
+            proc = ProcFS(tmp)
+            fd_links = proc.read_fd_links(1234)
+            self.assertEqual(fd_links, {0: "/dev/null"})
     #endregion

@@ -1,6 +1,5 @@
 import os
 
-
 class ProcFS:
     def __init__(self, procfs_path):
         self.procfs_path = procfs_path
@@ -53,20 +52,14 @@ class ProcFS:
                 if entry.is_dir() and entry.name.isdigit():
                     yield int(entry.name)
     def read_fd_links(self, pid: int) -> dict:
-        """Devuelve un diccionario {fd: destino} para los FDs abiertos por el proceso."""
+        """Devuelve {fd: destino_crudo} para los FDs abiertos por el proceso.
+
+        Solo lee el symlink; la interpretación del tipo es del analizador.
+        """
         fd_dir = f"{self.procfs_path}/{pid}/fd"
         result = {}
         with os.scandir(fd_dir) as it:
             for entry in it:
                 if entry.is_symlink():
-                    fd_num = int(entry.name)
-                    dest = os.readlink(entry.path)
-                    result[fd_num] = self._parse_fd_info(dest,fd_num)
+                    result[int(entry.name)] = os.readlink(entry.path)
         return result
-    def _parse_fd_info(self, fd_dest: str, fd_num: int) -> dict:
-        """Devuelve un diccionario con información del FD: tipo y destino."""
-        return {
-            "fd": fd_num,
-            "type": self._parse_fd_type(fd_dest),
-            "dest": fd_dest,
-        }
