@@ -102,7 +102,7 @@ class TestProcfs(unittest.TestCase):
             fd_dir = os.path.join(tmp, "1234", "fd")
             os.makedirs(fd_dir)
             os.symlink("/dev/null", os.path.join(fd_dir, "0"))
-            open(os.path.join(fd_dir, "basura"), "w").close()
+            open(os.path.join(fd_dir, "basura"), "w").close() #forma de crear archivo
             proc = ProcFS(tmp)
             fd_links = proc.read_fd_links(1234)
             self.assertEqual(fd_links, {0: "/dev/null"})
