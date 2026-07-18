@@ -26,6 +26,7 @@ class ProcFS:
             "ppid": int(fields[1]),   # campo 4
             "utime": int(fields[11]),  # campo 14, en jiffies
             "stime": int(fields[12]),  # campo 15, en jiffies
+            "starttime": int(fields[19])
         }
 
     def read_status(self, pid: int) -> dict:
