@@ -28,7 +28,7 @@ class AnalyzerFileDescriptor:
         for pid in self.shared_pids:
             try:
                 fd_list = self.procfs.read_fd_links(pid)
-            except (FileNotFoundError, ProcessLookupError):
+            except (FileNotFoundError, ProcessLookupError, PermissionError):
                 continue  # el proceso murió entre el listado y la lectura; lo salteamos
             data[pid] = {
                 fd: {"dest": dest, "type": self._parse_fd_type(dest)}

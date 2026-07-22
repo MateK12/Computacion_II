@@ -52,6 +52,24 @@ class ProcFS:
             for entry in it:
                 if entry.is_dir() and entry.name.isdigit():
                     yield int(entry.name)
+    def list_tids(self, pid: int):
+        """Generador que lista los TID de un proceso (carpetas de /proc/<pid>/task).
+
+        En un proceso mono-thread hay una sola entrada, con tid == pid.
+        """
+        with os.scandir(f"{self.procfs_path}/{pid}/task") as it:
+            for entry in it:
+                if entry.is_dir() and entry.name.isdigit():
+                    yield int(entry.name)
+
+    def read_thread_stat(self, pid: int, tid: int) -> dict:
+        """Lee /proc/<pid>/task/<tid>/stat. Mismo formato que <pid>/stat."""
+        return self.parse_stat(self._read_file(f"{pid}/task/{tid}/stat"))
+
+    def read_thread_status(self, pid: int, tid: int) -> dict:
+        """Lee /proc/<pid>/task/<tid>/status. Mismo formato que <pid>/status."""
+        return self.parse_status(self._read_file(f"{pid}/task/{tid}/status"))
+
     def read_fd_links(self, pid: int) -> dict:
         """Devuelve {fd: destino_crudo} para los FDs abiertos por el proceso.
 

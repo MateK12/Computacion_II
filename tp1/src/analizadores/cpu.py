@@ -41,7 +41,7 @@ class AnalyzerCPU:
         for pid in self.shared_pids:
             try:
                 status = self.procfs.read_stat(pid)
-            except (FileNotFoundError, ProcessLookupError):
+            except (FileNotFoundError, ProcessLookupError, PermissionError):
                 continue
             self._guard(pid, status)
             data[pid] = self._calculate_cpu_usage_interval(pid, status)

@@ -4,16 +4,30 @@ import multiprocessing as mp
 from src.procfs import ProcFS
 from src.collector import Collector
 from src.analizadores.summary import AnalyzerSummary
+from src.analizadores.cpu import AnalyzerCPU
+from src.analizadores.threads import AnalyzerThreads
+from src.analizadores.memory import AnalyzerMemory
+from src.analizadores.senales import AnalyzerSignals
+from src.analizadores.fds import AnalyzerFileDescriptor
 
-
+ANALYZERS = [
+    AnalyzerSummary,
+    AnalyzerCPU,
+    AnalyzerThreads,
+    AnalyzerMemory,
+    AnalyzerSignals,
+    AnalyzerFileDescriptor,
+]
 
 def run_collector(procfs, shared_pids):
     Collector(procfs, shared_pids, sleep_interval=2).collect()
 
 
-def run_summary(procfs, shared_pids, snapshot):
-    AnalyzerSummary(procfs, shared_pids, snapshot, interval=2).analyze()
 
+def run_analyzer(cls, procfs, shared_pids, snapshot, interval):
+    """Crea y ejecuta un analizador de la clase `cls`."""
+    analyzer = cls(procfs, shared_pids, snapshot, interval)
+    analyzer.analyze()
 
 #TO DO separar en otro archivo
 def _print_summary(snapshot):
@@ -40,7 +54,14 @@ def main():
 
     procs = [
         mp.Process(target=run_collector, args=(procfs, shared_pids), name="collector"),
-        mp.Process(target=run_summary, args=(procfs, shared_pids, snapshot), name="summary"),
+        *[
+            mp.Process(
+                target=run_analyzer,
+                args=(cls, procfs, shared_pids, snapshot, 2),
+                name=cls.__name__,
+            )
+            for cls in ANALYZERS
+        ],
     ]
     for p in procs:
         p.start()

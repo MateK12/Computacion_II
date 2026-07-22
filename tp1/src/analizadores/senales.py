@@ -36,7 +36,7 @@ class AnalyzerSignals:
         for pid in self.shared_pids:
             try:
                 status = self.procfs.read_status(pid)
-            except (FileNotFoundError, ProcessLookupError):
+            except (FileNotFoundError, ProcessLookupError, PermissionError):
                 continue  # el proceso murió entre el listado y la lectura; lo salteamos
             data[pid] = self._extract(status)
         self.snapshot["signals"] = {"ts": time.time(), "data": data}
