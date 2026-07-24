@@ -26,7 +26,11 @@ class ProcFS:
             "ppid": int(fields[1]),   # campo 4
             "utime": int(fields[11]),  # campo 14, en jiffies
             "stime": int(fields[12]),  # campo 15, en jiffies
-            "starttime": int(fields[19])
+            "priority": int(fields[15]),   # campo 18: prioridad interna del kernel
+            "nice": int(fields[16]),   # campo 19: perilla del usuario -20..+19
+            "starttime": int(fields[19]), #campo 22: tiempo de inicio en jiffies desde el boot
+            "rt_priority": int(fields[37]),   # campo 40: 1..99 para FIFO/RR, 0 si normal
+            "policy": int(fields[38])   # campo 41: entero crudo, lo traduce el analizador
         }
 
     def read_status(self, pid: int) -> dict:
@@ -69,6 +73,24 @@ class ProcFS:
     def read_thread_status(self, pid: int, tid: int) -> dict:
         """Lee /proc/<pid>/task/<tid>/status. Mismo formato que <pid>/status."""
         return self.parse_status(self._read_file(f"{pid}/task/{tid}/status"))
+
+    def read_schedstat(self, pid: int) -> dict:
+        """Lee /proc/<pid>/schedstat y devuelve sus tres números crudos.
+
+        Una sola línea: 'cpu_time runqueue_wait timeslices', todos en ns los dos
+        primeros. runqueue_wait depende de CONFIG_SCHEDSTATS (puede venir 0).
+        """
+        return self.parse_schedstat(self._read_file(f"{pid}/schedstat"))
+
+    @staticmethod
+    def parse_schedstat(schedstat_content: str) -> dict:
+        """Parsea la línea de /proc/<pid>/schedstat. Solo nombra, no interpreta."""
+        cpu_time, runqueue_wait, timeslices = schedstat_content.split()
+        return {
+            "cpu_time": int(cpu_time),           # ns acumulados en CPU
+            "runqueue_wait": int(runqueue_wait), # ns acumulados esperando en runqueue
+            "timeslices": int(timeslices),
+        }
 
     def read_fd_links(self, pid: int) -> dict:
         """Devuelve {fd: destino_crudo} para los FDs abiertos por el proceso.

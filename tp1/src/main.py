@@ -9,6 +9,7 @@ from src.analizadores.threads import AnalyzerThreads
 from src.analizadores.memory import AnalyzerMemory
 from src.analizadores.senales import AnalyzerSignals
 from src.analizadores.fds import AnalyzerFileDescriptor
+from src.analizadores.scheduling import AnalyzerScheduling
 
 ANALYZERS = [
     AnalyzerSummary,
@@ -17,6 +18,7 @@ ANALYZERS = [
     AnalyzerMemory,
     AnalyzerSignals,
     AnalyzerFileDescriptor,
+    AnalyzerScheduling,
 ]
 
 def run_collector(procfs, shared_pids):
@@ -39,7 +41,6 @@ def _print_summary(snapshot):
     print(f"\n=== summary @ {resumen['ts']:.0f}  ({len(data)} procesos) ===")
     for pid, info in list(data.items())[:10]:
         print(f"{pid:>7}  {info['state']}  thr={info['threads']:<3}  {info['name']}")
-
 
 # --- orquestador -------------------------------------------------------------
 

@@ -12,7 +12,8 @@ class TestProcfs(unittest.TestCase):
         self.assertIn('cpu MHz', cpuinfo)
     def test_parse_stat(self):
         # Ejemplo de contenido de /proc/[pid]/stat
-        stat_content = "12345 (python) R 6789 1234 5678 0 -1 4194560 100 0 0 0 10 20 0 0 20 0 1 0 123456789"
+        # Se rellena hasta fields[38] (policy) porque parse_stat ahora lo lee.
+        stat_content = "12345 (python) R 6789 1234 5678 0 -1 4194560 100 0 0 0 10 20 0 0 20 0 1 0 123456789 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
         parsed = ProcFS.parse_stat(stat_content)
         self.assertEqual(parsed['pid'], 12345)
         self.assertEqual(parsed['comm'], 'python')
@@ -21,7 +22,7 @@ class TestProcfs(unittest.TestCase):
         self.assertEqual(parsed['utime'], 10)
     def test_parse_stat_with_spaces(self):
         # El comando tiene espacios y está entre paréntesis
-        stat_content = "54321 (my python script) S 9876 5432 1234 0 -1 4194560 200 0 0 0 15 25 0 0 20 0 1 0 987654321"
+        stat_content = "54321 (my python script) S 9876 5432 1234 0 -1 4194560 200 0 0 0 15 25 0 0 20 0 1 0 987654321 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
         parsed = ProcFS.parse_stat(stat_content)
         self.assertEqual(parsed['pid'], 54321)
         self.assertEqual(parsed['comm'], 'my python script')
@@ -31,7 +32,7 @@ class TestProcfs(unittest.TestCase):
 
     def test_parse_stat_with_parentheses(self):
         # Caso maligno: el comm contiene paréntesis — solo el ÚLTIMO ')' cierra
-        stat_content = "123 (hola) (mundo) S 1 123 123 0 -1 4194304 100 0 5 0 7 3 0 0 20 0 1 0 1000 0 0"
+        stat_content = "123 (hola) (mundo) S 1 123 123 0 -1 4194304 100 0 5 0 7 3 0 0 20 0 1 0 1000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
         parsed = ProcFS.parse_stat(stat_content)
         self.assertEqual(parsed['pid'], 123)
         self.assertEqual(parsed['comm'], 'hola) (mundo')
