@@ -10,6 +10,7 @@ from src.analizadores.memory import AnalyzerMemory
 from src.analizadores.senales import AnalyzerSignals
 from src.analizadores.fds import AnalyzerFileDescriptor
 from src.analizadores.scheduling import AnalyzerScheduling
+from src.analizadores.sistema import AnalyzerSystem
 
 ANALYZERS = [
     AnalyzerSummary,
@@ -19,6 +20,7 @@ ANALYZERS = [
     AnalyzerSignals,
     AnalyzerFileDescriptor,
     AnalyzerScheduling,
+    AnalyzerSystem,
 ]
 
 def run_collector(procfs, shared_pids):

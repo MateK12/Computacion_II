@@ -108,3 +108,117 @@ class TestProcfs(unittest.TestCase):
             fd_links = proc.read_fd_links(1234)
             self.assertEqual(fd_links, {0: "/dev/null"})
     #endregion
+
+    #region globales (/proc/stat, meminfo, loadavg, uptime)
+
+    STAT_GLOBAL_FIXTURE = (
+        "cpu  54114 517 16474 405222 2053 0 924 0 12 3\n"
+        "cpu0 6665 38 2168 50622 259 0 53 0 0 0\n"
+        "cpu1 6700 40 2100 50700 260 0 55 0 0 0\n"
+        "intr 3921861 0 807 0 0 0 0 0 0 0 36\n"
+        "ctxt 7098234\n"
+        "btime 1784937473\n"
+        "processes 16520\n"
+        "procs_running 2\n"
+        "procs_blocked 0\n"
+        "softirq 1234567 1 2 3 4 5 6 7 8 9 10\n"
+    )
+
+    def test_parse_stat_global_linea_cpu(self):
+        # Las 10 categorías salen nombradas, en el orden del kernel.
+        parsed = ProcFS.parse_stat_global(self.STAT_GLOBAL_FIXTURE)
+        self.assertEqual(parsed["cpu"], {
+            "user": 54114, "nice": 517, "system": 16474, "idle": 405222,
+            "iowait": 2053, "irq": 0, "softirq": 924, "steal": 0,
+            "guest": 12, "guest_nice": 3,
+        })
+
+    def test_parse_stat_global_escalares(self):
+        parsed = ProcFS.parse_stat_global(self.STAT_GLOBAL_FIXTURE)
+        self.assertEqual(parsed["ctxt"], 7098234)
+        self.assertEqual(parsed["btime"], 1784937473)
+        self.assertEqual(parsed["processes"], 16520)
+        self.assertEqual(parsed["procs_running"], 2)
+        self.assertEqual(parsed["procs_blocked"], 0)
+
+    def test_parse_stat_global_ignora_por_core_y_vectores(self):
+        # Caso maligno: si el parser usara startswith("cpu"), las líneas cpu0/cpu1
+        # pisarían la agregada. Y 'softirq' como LÍNEA no debe confundirse con la
+        # CATEGORÍA 'softirq' de la línea cpu (924, no 1234567).
+        parsed = ProcFS.parse_stat_global(self.STAT_GLOBAL_FIXTURE)
+        self.assertEqual(parsed["cpu"]["user"], 54114)   # no 6665 ni 6700
+        self.assertEqual(parsed["cpu"]["softirq"], 924)  # no 1234567
+        self.assertNotIn("cpu0", parsed)
+        self.assertNotIn("intr", parsed)
+        self.assertNotIn("softirq", parsed)
+
+    def test_parse_stat_global_campos_faltantes(self):
+        # Kernel viejo: la línea cpu trae solo 8 categorías (sin guest/guest_nice).
+        # No debe reventar; las que faltan quedan en 0.
+        parsed = ProcFS.parse_stat_global("cpu  100 2 30 400 5 0 6 0\nctxt 999\n")
+        self.assertEqual(parsed["cpu"]["steal"], 0)
+        self.assertEqual(parsed["cpu"]["guest"], 0)
+        self.assertEqual(parsed["cpu"]["guest_nice"], 0)
+        self.assertEqual(parsed["cpu"]["user"], 100)
+        self.assertEqual(len(parsed["cpu"]), 10)  # la forma no cambia
+
+    def test_parse_stat_global_ignora_lineas_vacias(self):
+        parsed = ProcFS.parse_stat_global("\ncpu  1 2 3 4 5 6 7 8 9 10\n\nbtime 42\n")
+        self.assertEqual(parsed["cpu"]["user"], 1)
+        self.assertEqual(parsed["btime"], 42)
+
+    MEMINFO_FIXTURE = (
+        "MemTotal:       24293772 kB\n"
+        "MemFree:        14822604 kB\n"
+        "MemAvailable:   19346884 kB\n"
+        "Buffers:          424800 kB\n"
+        "Cached:          4576184 kB\n"
+        "SwapTotal:       8388604 kB\n"
+        "SwapFree:        8388604 kB\n"
+        "HugePages_Total:       0\n"
+        "Hugepagesize:       2048 kB\n"
+    )
+
+    def test_parse_meminfo(self):
+        # La unidad 'kB' se descarta: los valores salen como int.
+        parsed = ProcFS.parse_meminfo(self.MEMINFO_FIXTURE)
+        self.assertEqual(parsed["MemTotal"], 24293772)
+        self.assertEqual(parsed["MemAvailable"], 19346884)
+        self.assertEqual(parsed["SwapFree"], 8388604)
+        self.assertIsInstance(parsed["MemFree"], int)
+
+    def test_parse_meminfo_linea_sin_unidad(self):
+        # No todas las líneas traen 'kB' (HugePages_* vienen peladas).
+        parsed = ProcFS.parse_meminfo(self.MEMINFO_FIXTURE)
+        self.assertEqual(parsed["HugePages_Total"], 0)
+
+    def test_parse_meminfo_devuelve_todas_las_claves(self):
+        parsed = ProcFS.parse_meminfo(self.MEMINFO_FIXTURE)
+        self.assertEqual(len(parsed), 9)
+
+    def test_parse_meminfo_ignora_lineas_sin_clave(self):
+        parsed = ProcFS.parse_meminfo("MemTotal: 100 kB\n\nbasura sin separador\n")
+        self.assertEqual(parsed, {"MemTotal": 100})
+
+    def test_parse_loadavg(self):
+        # El 4º campo es compuesto: 'runnable/threads_totales'.
+        parsed = ProcFS.parse_loadavg("0.43 1.04 0.74 1/1534 16514\n")
+        self.assertEqual(parsed, {
+            "load_1m": 0.43, "load_5m": 1.04, "load_15m": 0.74,
+            "runnable": 1, "total_threads": 1534, "last_pid": 16514,
+        })
+
+    def test_parse_uptime(self):
+        # El 2º campo es idle SUMADO sobre todos los cores: puede ser mayor que el 1º.
+        parsed = ProcFS.parse_uptime("607.19 4052.24\n")
+        self.assertEqual(parsed, {"uptime": 607.19, "idle": 4052.24})
+
+    def test_readers_globales_contra_proc_real(self):
+        # Los read_* solo hacen open(); esto verifica el cableado nombre-de-archivo,
+        # que es lo único que los parsers puros no pueden cubrir.
+        proc = ProcFS('/proc')
+        self.assertGreater(proc.read_stat_global()["cpu"]["idle"], 0)
+        self.assertGreater(proc.read_meminfo()["MemTotal"], 0)
+        self.assertGreaterEqual(proc.read_loadavg()["load_1m"], 0.0)
+        self.assertGreater(proc.read_uptime()["uptime"], 0.0)
+    #endregion
