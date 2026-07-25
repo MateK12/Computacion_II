@@ -26,9 +26,8 @@ class AnalyzerCPU:
         previous_jiffies= self._prev.get(pid, {}).get("total_jiffies", None)
         if previous_jiffies is None: #si es la primera vez que se ve ese PID
             return None
-        previous_timestamp = self._prev[pid]["ts"] 
         
-        elapsed_time = time.time() - previous_timestamp # en segundos
+        elapsed_time = time.monotonic() - self._prev[pid]["mono"] # en segundos
         
 
         cpu_usage = (total_jiffies - previous_jiffies) / self._clk_tck / elapsed_time * 100
@@ -61,5 +60,5 @@ class AnalyzerCPU:
         return {
             "starttime": status["starttime"],
             "total_jiffies": total_jiffies,
-            "ts": time.time()
+            "mono": time.monotonic()
         }

@@ -25,14 +25,19 @@ def mock_stat(utime=0, stime=0, starttime=1000):
 
 
 class FakeClock:
-    """Reloj falso: time() devuelve self.t. Avanzá self.t entre ciclos para
-    controlar el 'elapsed' de forma determinista, sin depender del reloj real."""
+    """Reloj falso con los DOS relojes separados: `t` es el de pared (time()) y
+    `mono` el monotónico. Tenerlos sueltos permite moverlos de forma
+    independiente, que es justo lo que hace NTP en la vida real."""
 
-    def __init__(self, t):
+    def __init__(self, t, mono=500.0):
         self.t = t
+        self.mono = mono
 
     def time(self):
         return self.t
+
+    def monotonic(self):
+        return self.mono
 
 
 class TestCPU(unittest.TestCase):
@@ -60,7 +65,7 @@ class TestCPU(unittest.TestCase):
         a = self._analyzer(stats={1: mock_stat(utime=10)}, pids=[1])
         a._ciclo()                                        # t=1000 -> None
         a.procfs.stats_por_pid[1] = mock_stat(utime=60)   # +50 jiffies
-        self.clock.t = 1001.0                             # elapsed = 1s
+        self.clock.mono += 1.0                             # elapsed = 1s
         a._ciclo()
         self.assertAlmostEqual(a.snapshot["cpu"]["data"][1], 50.0)
 
@@ -69,16 +74,27 @@ class TestCPU(unittest.TestCase):
         a = self._analyzer(stats={1: mock_stat(utime=0)}, pids=[1])
         a._ciclo()
         a.procfs.stats_por_pid[1] = mock_stat(utime=50)
-        self.clock.t = 1002.0                             # elapsed = 2s
+        self.clock.mono += 2.0                             # elapsed = 2s
         a._ciclo()
         self.assertAlmostEqual(a.snapshot["cpu"]["data"][1], 25.0)
+
+    def test_usa_monotonic_y_no_el_reloj_de_pared(self):
+        """Si NTP mueve time() una hora hacia atrás entre dos ciclos, el CPU%
+        tiene que seguir bien: el elapsed sale de monotonic()."""
+        a = self._analyzer(stats={1: mock_stat(utime=10)}, pids=[1])
+        a._ciclo()
+        a.procfs.stats_por_pid[1] = mock_stat(utime=60)   # +50 jiffies
+        self.clock.mono += 1.0                            # 1 segundo real
+        self.clock.t -= 3600.0                            # el reloj de pared retrocede una hora
+        a._ciclo()
+        self.assertAlmostEqual(a.snapshot["cpu"]["data"][1], 50.0)
 
     def test_puede_superar_100_por_multiples_nucleos(self):
         """300 jiffies en 1s -> 300% (varios núcleos a la vez, es válido)."""
         a = self._analyzer(stats={1: mock_stat(utime=0)}, pids=[1])
         a._ciclo()
         a.procfs.stats_por_pid[1] = mock_stat(utime=300)
-        self.clock.t = 1001.0
+        self.clock.mono += 1.0
         a._ciclo()
         self.assertAlmostEqual(a.snapshot["cpu"]["data"][1], 300.0)
 
@@ -86,7 +102,7 @@ class TestCPU(unittest.TestCase):
         """Sin cambio en jiffies entre ciclos -> 0%."""
         a = self._analyzer(stats={1: mock_stat(utime=100)}, pids=[1])
         a._ciclo()
-        self.clock.t = 1001.0                             # mismo stat, sin actividad
+        self.clock.mono += 1.0                             # mismo stat, sin actividad
         a._ciclo()
         self.assertAlmostEqual(a.snapshot["cpu"]["data"][1], 0.0)
 
@@ -96,7 +112,7 @@ class TestCPU(unittest.TestCase):
         a._ciclo()
         # el PID 1 fue reasignado a un proceso nuevo (starttime distinto)
         a.procfs.stats_por_pid[1] = mock_stat(utime=5, starttime=9999)
-        self.clock.t = 1001.0
+        self.clock.mono += 1.0
         a._ciclo()
         self.assertIsNone(a.snapshot["cpu"]["data"][1])
 
@@ -109,7 +125,7 @@ class TestCPU(unittest.TestCase):
         a._ciclo()
         self.assertIn(2, a._prev)                         # vivo en el 1er ciclo
         a.shared_pids.remove(2)                           # el PID 2 muere
-        self.clock.t = 1001.0
+        self.clock.mono += 1.0
         a._ciclo()
         self.assertNotIn(2, a._prev)                      # podado
         self.assertIn(1, a._prev)

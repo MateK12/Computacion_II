@@ -51,14 +51,19 @@ def mock_status(affinity="0-7"):
 
 
 class FakeClock:
-    """Reloj falso: time() devuelve self.t. Avanzá self.t entre ciclos para
-    controlar el 'elapsed' de forma determinista."""
+    """Reloj falso con los DOS relojes separados: `t` es el de pared (time()) y
+    `mono` el monotónico. Tenerlos sueltos permite moverlos de forma
+    independiente, que es justo lo que hace NTP en la vida real."""
 
-    def __init__(self, t):
+    def __init__(self, t, mono=500.0):
         self.t = t
+        self.mono = mono
 
     def time(self):
         return self.t
+
+    def monotonic(self):
+        return self.mono
 
 
 class TestScheduling(unittest.TestCase):
@@ -98,7 +103,7 @@ class TestScheduling(unittest.TestCase):
         )
         a._ciclo()
         a.procfs.schedstats[1] = mock_schedstat(cpu_time=500_000_000)
-        self.clock.t = 1001.0
+        self.clock.mono += 1.0
         a._ciclo()
         self.assertAlmostEqual(a.snapshot["scheduling"]["data"][1]["cpu_usage"], 50.0)
 
@@ -112,7 +117,7 @@ class TestScheduling(unittest.TestCase):
         )
         a._ciclo()
         a.procfs.schedstats[1] = mock_schedstat(runqueue_wait=500_000_000)
-        self.clock.t = 1001.0
+        self.clock.mono += 1.0
         a._ciclo()
         self.assertAlmostEqual(
             a.snapshot["scheduling"]["data"][1]["runqueue_wait_pct"], 50.0
@@ -128,9 +133,25 @@ class TestScheduling(unittest.TestCase):
         )
         a._ciclo()
         a.procfs.schedstats[1] = mock_schedstat(cpu_time=500_000_000)
-        self.clock.t = 1002.0                             # elapsed = 2s
+        self.clock.mono += 2.0                             # elapsed = 2s
         a._ciclo()
         self.assertAlmostEqual(a.snapshot["scheduling"]["data"][1]["cpu_usage"], 25.0)
+
+    def test_usa_monotonic_y_no_el_reloj_de_pared(self):
+        """Si NTP mueve time() una hora hacia atrás entre dos ciclos, cpu_usage
+        tiene que seguir bien: el elapsed sale de monotonic()."""
+        a = self._analyzer(
+            stats={1: mock_stat()},
+            schedstats={1: mock_schedstat(cpu_time=0)},
+            statuses={1: mock_status()},
+            pids=[1],
+        )
+        a._ciclo()
+        a.procfs.schedstats[1] = mock_schedstat(cpu_time=500_000_000)
+        self.clock.mono += 1.0      # 1 segundo real
+        self.clock.t -= 3600.0      # el reloj de pared retrocede una hora
+        a._ciclo()
+        self.assertAlmostEqual(a.snapshot["scheduling"]["data"][1]["cpu_usage"], 50.0)
 
     def test_traduccion_de_policy(self):
         """Cada entero del kernel se traduce a su nombre; desconocido -> UNKNOWN."""
@@ -153,7 +174,7 @@ class TestScheduling(unittest.TestCase):
         a._ciclo()
         a.procfs.stats[1] = mock_stat(starttime=9999)     # PID reasignado
         a.procfs.schedstats[1] = mock_schedstat(cpu_time=500_000_000)
-        self.clock.t = 1001.0
+        self.clock.mono += 1.0
         a._ciclo()
         self.assertIsNone(a.snapshot["scheduling"]["data"][1]["cpu_usage"])
 
@@ -168,7 +189,7 @@ class TestScheduling(unittest.TestCase):
         a._ciclo()
         self.assertIn(2, a._prev)
         a.shared_pids.remove(2)
-        self.clock.t = 1001.0
+        self.clock.mono += 1.0
         a._ciclo()
         self.assertNotIn(2, a._prev)
         self.assertIn(1, a._prev)

@@ -17,11 +17,6 @@ class AnalyzerScheduling:
 
     def _build_scheduling_data(self, pid, stat, schedStat, status):
         """Construye el dict de scheduling para un PID.
-
-        Los campos estáticos (nice/priority/policy/afinidad) salen siempre, ya
-        disponibles desde la primera lectura. Los de delta (cpu_usage y
-        runqueue_wait_pct) arrancan en None y solo se calculan si hay una lectura
-        previa del mismo PID.
         """
         data = {
             "priority": stat["priority"],
@@ -38,10 +33,13 @@ class AnalyzerScheduling:
         if previous is None:  # primera vez que vemos este PID: sin delta todavía
             return data
 
-        elapsed_time = time.time() - previous["ts"]  # en segundos
+        elapsed_time = time.monotonic() - previous["mono"]  # en segundos
         delta_cpu = schedStat["cpu_time"] - previous["cpu_time"]
+
         delta_wait = schedStat["runqueue_wait"] - previous["runqueue_wait"]
+
         # ns -> s (* 1e-9) sobre el tiempo real transcurrido, expresado en %
+        
         data["cpu_usage"] = delta_cpu / elapsed_time * 1e-9 * 100
         data["runqueue_wait_pct"] = delta_wait / elapsed_time * 1e-9 * 100
         return data
@@ -76,7 +74,7 @@ class AnalyzerScheduling:
             "cpu_time": sched_stat["cpu_time"],
             "runqueue_wait": sched_stat["runqueue_wait"],
             "timeslices": sched_stat["timeslices"],
-            "ts": time.time()
+            "mono": time.monotonic()
         }
     # Mapa entero -> nombre de la política de scheduling (man sched(7)).
     _POLICIES = {
