@@ -26,23 +26,19 @@ ANALYZERS = [
 def run_collector(procfs, shared_pids):
     Collector(procfs, shared_pids, sleep_interval=2).collect()
 
-
-
 def run_analyzer(cls, procfs, shared_pids, snapshot, interval):
     """Crea y ejecuta un analizador de la clase `cls`."""
     analyzer = cls(procfs, shared_pids, snapshot, interval)
     analyzer.analyze()
 
-#TO DO separar en otro archivo
-def _print_summary(snapshot):
-    resumen = snapshot.get("summary")
-    if resumen is None:
-        print("esperando primer snapshot del analizador...")
-        return
-    data = resumen["data"]
-    print(f"\n=== summary @ {resumen['ts']:.0f}  ({len(data)} procesos) ===")
-    for pid, info in list(data.items())[:10]:
-        print(f"{pid:>7}  {info['state']}  thr={info['threads']:<3}  {info['name']}")
+def run_display(snapshot):
+    """Crea y ejecuta el display."""
+    from src.display.display import Display
+    from src.display.rich_renderer import RichRenderer
+
+    renderer = RichRenderer()
+    display = Display(renderer, snapshot)
+    display.run_display()
 
 # --- orquestador -------------------------------------------------------------
 
@@ -56,6 +52,7 @@ def main():
     shared_pids = manager.list()
 
     procs = [
+        mp.Process(target=run_display, args=(snapshot,), name="display"),
         mp.Process(target=run_collector, args=(procfs, shared_pids), name="collector"),
         *[
             mp.Process(
@@ -69,10 +66,9 @@ def main():
     for p in procs:
         p.start()
 
-    try:
+    try: #TO do quitar cuando se implemente el shutdown de los analizadores y del collector
         while True:
-            time.sleep(2)
-            _print_summary(snapshot)
+            time.sleep(60)
     except KeyboardInterrupt:
         print("\nbajando...")
     finally:
