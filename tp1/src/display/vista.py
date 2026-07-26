@@ -6,6 +6,8 @@ El proceso display hace `dict(snapshot)` una vez por frame y nos pasa esa copia;
 el renderer recibe el ViewTable y lo dibuja sin saber de qué vista vino.
 """
 
+import signal as _signal
+
 from .models import ViewTable
 
 
@@ -89,4 +91,119 @@ def view_memory(data: dict) -> ViewTable:
         columns=["PID"] + labels + ["Comando"],
         rows=rows,
         ts=memory_data["ts"],
+    )
+
+def view_threads(data: dict) -> ViewTable:
+    """Vista Threads: una fila por thread con información de estado, CPU%, y cambios de contexto.
+    La dimensión base es `threads`: un thread sin entrada ahí no tiene fila.
+    """
+    summary = data.get("summary", _EMPTY_DIM)
+    threads_data = data.get("threads", _EMPTY_DIM)
+    rows = []
+    for pid in sorted(threads_data["data"]):
+        proc = summary["data"].get(pid, None)
+        for tid, thread in sorted(threads_data["data"][pid].items()):
+            rows.append([
+                pid,
+                tid,
+                thread["name"],
+                thread["state"],
+                thread["cpu"],
+                thread["ctxt"]["vol"],
+                thread["ctxt"]["nonvol"],
+                proc["name"] if proc else None,
+            ])
+
+    return ViewTable(
+        title="Hilos",
+        columns=["PID","TID","Nombre","Estado","CPU%","Contextos Vol.","Contextos No Vol.","Comando"],
+        rows=rows,
+        ts=threads_data["ts"],
+    )
+
+
+_SCHEDULING_COLUMNS = [
+    ("policy", "Política"),
+    ("nice", "Nice"),
+    ("priority", "Prio"),
+    ("rt_priority", "PrioRT"),
+    ("affinity", "CPUs"),
+    ("timeslices", "Timeslices"),
+    ("cpu_usage", "CPU%"),
+    ("runqueue_wait_pct", "EsperaRQ%"),
+]
+
+
+def view_scheduling(data: dict) -> ViewTable:
+    """Vista Scheduling: una fila por proceso con política, prioridades, afinidad
+    y los porcentajes de CPU y de espera en runqueue del último intervalo.
+    La dimensión base es `scheduling`: un proceso sin entrada ahí no tiene fila.
+    """
+    summary = data.get("summary", _EMPTY_DIM)
+    sched_data = data.get("scheduling", _EMPTY_DIM)
+    keys = [key for key, _ in _SCHEDULING_COLUMNS]
+    labels = [label for _, label in _SCHEDULING_COLUMNS]
+
+    rows = []
+    for pid in sorted(sched_data["data"]):  
+        proc = summary["data"].get(pid)
+        sched = sched_data["data"][pid]
+        rows.append([
+            pid,
+            * (sched[key] for key in keys),
+            proc["name"] if proc else None,
+        ])
+
+    return ViewTable(
+        title="Scheduling",
+        columns=["PID"] + labels + ["Comando"],
+        rows=rows,
+        ts=sched_data["ts"],
+    )
+
+
+def _signal_name(num: int) -> str:
+    """9 -> 'KILL', 15 -> 'TERM'. Los números sin nombre en este kernel
+    (p. ej. señales de tiempo real) quedan como número."""
+    try:
+        return _signal.Signals(num).name.removeprefix("SIG")
+    except ValueError:
+        return str(num)
+
+
+def _fmt_pending(nums: list) -> str:
+    """Pendientes: conteo y además cuáles, porque una señal pendiente es lo
+    urgente de esta vista. [] -> '0'; [2, 15] -> '2: INT,TERM'."""
+    if not nums:
+        return "0"
+    return f"{len(nums)}: " + ",".join(_signal_name(n) for n in nums)
+
+
+def view_signals(data: dict) -> ViewTable:
+    """Vista Señales: una fila por proceso con el conteo de señales bloqueadas,
+    ignoradas y capturadas, y las pendientes (conteo + cuáles).
+    La dimensión base es `signals`: un proceso sin entrada ahí no tiene fila.
+    """
+    summary = data.get("summary", _EMPTY_DIM)
+    signals_data = data.get("signals", _EMPTY_DIM)
+
+    rows = []
+    for pid in sorted(signals_data["data"]):  # orden estable entre frames
+        proc = summary["data"].get(pid)
+        sig = signals_data["data"][pid]
+        rows.append([
+            pid,
+            len(sig["blocked"]),
+            len(sig["ignored"]),
+            len(sig["caught"]),
+            _fmt_pending(sig["pending_thread"]),
+            _fmt_pending(sig["pending_shared"]),
+            proc["name"] if proc else None,
+        ])
+
+    return ViewTable(
+        title="Señales",
+        columns=["PID", "Bloqueadas", "Ignoradas", "Capturadas", "Pend(thr)", "Pend(shr)", "Comando"],
+        rows=rows,
+        ts=signals_data["ts"],
     )
