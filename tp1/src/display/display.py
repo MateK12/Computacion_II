@@ -1,7 +1,7 @@
 
 from .models import ViewTable
 from .renderer import IRenderer
-from .vista import view_summary
+from .vista import view_summary, view_memory
 import signal
 import sys
 import time
@@ -39,7 +39,7 @@ class Display:
         try:
             while True:
                 snapshot = dict(self._snapshot)
-                self._render(view_summary(snapshot))
+                self._render(view_memory(snapshot))
                 time.sleep(1)
         finally: #corre en systemExit
             self.stop()
