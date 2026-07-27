@@ -26,6 +26,14 @@ _MEMORY_COLUMNS = [
     ("vm_lib", "VmLib(kB)"),
     ("vm_swap", "VmSwap(kB)"),
 ]
+# Page faults del último intervalo (deltas que publica AnalyzerMemory). Van en
+# una lista aparte porque NO entran al filtro de kthreads: un None acá es
+# transitorio (primer ciclo, PID reusado) y no debe sacar la fila — si entraran
+# al filtro, el primer frame del monitor mostraría la tabla vacía.
+_MEMORY_FAULT_COLUMNS = [
+    ("minflt_delta", "MinFlt"),
+    ("majflt_delta", "MajFlt"),
+]
 
 def view_summary(data: dict) -> ViewTable:
     """Vista Resumen: una fila por proceso con estado, CPU%, RSS, threads y comando.
@@ -67,14 +75,18 @@ def _filter_none_procs(cols, procs):
 
 
 def view_memory(data: dict) -> ViewTable:
-    """Vista Memoria: una fila por proceso con información de memoria: VM size, RSS, HWM, Data, Stack, Exe, Lib y Swap.
+    """Vista Memoria: una fila por proceso con información de memoria: VM size, RSS, HWM, Data, Stack, Exe, Lib y Swap,
+    más los page faults (minor/major) del último intervalo.
     La dimensión base es `memory`: un proceso sin entrada ahí no tiene fila. Todo esta expresado en kB
     """
     summary = data.get("summary", _EMPTY_DIM)
     memory_data = data.get("memory", _EMPTY_DIM)
     keys = [key for key, _ in _MEMORY_COLUMNS]
-    labels = [label for _, label in _MEMORY_COLUMNS]
+    fault_keys = [key for key, _ in _MEMORY_FAULT_COLUMNS]
+    labels = [label for _, label in _MEMORY_COLUMNS + _MEMORY_FAULT_COLUMNS]
 
+    # el filtro mira SOLO las vm_* (None estructural = kthread); los *_delta
+    # en None son transitorios y la fila se muestra igual
     filtered_memory_data = _filter_none_procs(keys, memory_data["data"])
     rows = []
     for pid in sorted(filtered_memory_data):
@@ -83,6 +95,7 @@ def view_memory(data: dict) -> ViewTable:
         rows.append([
             pid,
             * (mem[key] for key in keys),
+            * (mem[key] for key in fault_keys),
             proc["name"] if proc else None,
         ])
 
@@ -163,8 +176,7 @@ def view_scheduling(data: dict) -> ViewTable:
 
 
 def _signal_name(num: int) -> str:
-    """9 -> 'KILL', 15 -> 'TERM'. Los números sin nombre en este kernel
-    (p. ej. señales de tiempo real) quedan como número."""
+    """9 -> 'KILL', 15 -> 'TERM'. Los números sin nombre en este kernel quedan como número."""
     try:
         return _signal.Signals(num).name.removeprefix("SIG")
     except ValueError:

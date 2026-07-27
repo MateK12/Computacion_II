@@ -33,6 +33,10 @@ class ProcFS:
             "comm": comm,
             "state": fields[0],   # campo 3 del man
             "ppid": int(fields[1]),   # campo 4
+            "minflt": int(fields[7]),  # campo 10, page faults menores
+            "cminflt": int(fields[8]),  # campo 11, page faults
+            "majflt": int(fields[9]),  # campo 12, page faults mayores
+            "cmajflt": int(fields[10]),  # campo 13, page faults
             "utime": int(fields[11]),  # campo 14, en jiffies
             "stime": int(fields[12]),  # campo 15, en jiffies
             "priority": int(fields[15]),   # campo 18: prioridad interna del kernel
