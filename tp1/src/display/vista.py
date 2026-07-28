@@ -9,6 +9,7 @@ el renderer recibe el ViewTable y lo dibuja sin saber de qué vista vino.
 import signal as _signal
 
 from .models import ViewTable
+from .formatters import format_uptime, format_time_unix, format_kb, format_proc_state
 
 
 # Dimensión vacía: lo que asumimos cuando un analizador todavía no publicó nada
@@ -16,15 +17,16 @@ from .models import ViewTable
 _EMPTY_DIM = {"ts": None, "data": {}}
 # (clave en la dimensión memory, etiqueta para el encabezado) — todo en kB,
 # unidad nativa de /proc; los nombres Vm* son los de /proc/<pid>/status.
+# Los valores se formatean a unidades humanas (MB, GB) con format_kb.
 _MEMORY_COLUMNS = [
-    ("vm_size", "VmSize(kB)"),
-    ("vm_rss", "VmRSS(kB)"),
-    ("vm_hwm", "VmHWM(kB)"),
-    ("vm_data", "VmData(kB)"),
-    ("vm_stack", "VmStk(kB)"),
-    ("vm_exe", "VmExe(kB)"),
-    ("vm_lib", "VmLib(kB)"),
-    ("vm_swap", "VmSwap(kB)"),
+    ("vm_size", "VmSize"),
+    ("vm_rss", "VmRSS"),
+    ("vm_hwm", "VmHWM"),
+    ("vm_data", "VmData"),
+    ("vm_stack", "VmStk"),
+    ("vm_exe", "VmExe"),
+    ("vm_lib", "VmLib"),
+    ("vm_swap", "VmSwap"),
 ]
 # Page faults del último intervalo (deltas que publica AnalyzerMemory). Van en
 # una lista aparte porque NO entran al filtro de kthreads: un None acá es
@@ -44,21 +46,22 @@ def view_summary(data: dict) -> ViewTable:
     memory_data = data.get("memory", _EMPTY_DIM)["data"]
 
     rows = []
-    for pid in sorted(summary["data"]): 
+    for pid in sorted(summary["data"]):
         proc = summary["data"][pid]
         mem = memory_data.get(pid)
+        rss = format_kb(mem["vm_rss"]) if mem else None
         rows.append([
             pid,
             proc["state"],
-            cpu_data.get(pid),                   
-            mem["vm_rss"] if mem else None,       # kB | None
+            cpu_data.get(pid),
+            rss,
             proc["threads"],
             proc["name"],
         ])
 
     return ViewTable(
         title="Resumen",
-        columns=["PID", "Estado", "CPU%", "RSS(kB)", "Threads", "Comando"],
+        columns=["PID", "Estado", "CPU%", "RSS", "Threads", "Comando"],
         rows=rows,
         ts=summary["ts"],
     )
@@ -77,7 +80,7 @@ def _filter_none_procs(cols, procs):
 def view_memory(data: dict) -> ViewTable:
     """Vista Memoria: una fila por proceso con información de memoria: VM size, RSS, HWM, Data, Stack, Exe, Lib y Swap,
     más los page faults (minor/major) del último intervalo.
-    La dimensión base es `memory`: un proceso sin entrada ahí no tiene fila. Todo esta expresado en kB
+    La dimensión base es `memory`: un proceso sin entrada ahí no tiene fila. Los valores se formatean a unidades humanas.
     """
     summary = data.get("summary", _EMPTY_DIM)
     memory_data = data.get("memory", _EMPTY_DIM)
@@ -94,7 +97,7 @@ def view_memory(data: dict) -> ViewTable:
         mem = memory_data["data"].get(pid)
         rows.append([
             pid,
-            * (mem[key] for key in keys),
+            * (format_kb(mem[key]) for key in keys),
             * (mem[key] for key in fault_keys),
             proc["name"] if proc else None,
         ])
@@ -181,7 +184,7 @@ def view_threads(data: dict) -> ViewTable:
 
     return ViewTable(
         title="Hilos",
-        columns=["PID","TID","Nombre","Estado","CPU%","Contextos Vol.","Contextos No Vol.","Comando"],
+        columns=["PID","TID","Nombre","Estado","CPU%","Vol","NoVol","Comando"],
         rows=rows,
         ts=threads_data["ts"],
     )
@@ -267,7 +270,181 @@ def view_signals(data: dict) -> ViewTable:
 
     return ViewTable(
         title="Señales",
-        columns=["PID", "Bloqueadas", "Ignoradas", "Capturadas", "Pend(thr)", "Pend(shr)", "Comando"],
+        columns=["PID", "Bloq", "Ignor", "Capt", "Pend(thr)", "Pend(shr)", "Comando"],
         rows=rows,
         ts=signals_data["ts"],
     )
+
+
+def _row_uptime(data: dict) -> list:
+	"""Fila de Uptime y Boot Time."""
+	uptime = format_uptime(data.get("uptime"))
+	boot_time_str = format_time_unix(data.get("boot_time"))
+	boot_time_col = f"Boot: {boot_time_str}" if boot_time_str else None
+	return [
+		"Uptime",
+		uptime,
+		boot_time_col,
+		None,
+		None,
+	]
+
+
+def _row_load(data: dict) -> list:
+	"""Fila de Load averages."""
+	return [
+		"Load",
+		f"1m: {data.get('load_1m'):.2f}" if data.get("load_1m") is not None else None,
+		f"5m: {data.get('load_5m'):.2f}" if data.get("load_5m") is not None else None,
+		f"15m: {data.get('load_15m'):.2f}" if data.get("load_15m") is not None else None,
+		None,
+	]
+
+
+def _row_memoria(data: dict) -> list:
+	"""Fila de Memoria (total, libre, cache, swap)."""
+	return [
+		"Memoria",
+		f"Total: {format_kb(data.get('mem_total_kb'))}",
+		f"Libre: {format_kb(data.get('mem_free_kb'))}",
+		f"Cache: {format_kb(data.get('mem_cached_kb'))}",
+		f"Swap: {format_kb(data.get('swap_used_kb'))} / {format_kb(data.get('swap_total_kb'))}",
+	]
+
+
+def _row_cpu(data: dict) -> list:
+	"""Fila de CPU (user, system, idle, iowait)."""
+	row = ["CPU"]
+	cpu_fields = [
+		("cpu_user_pct", "user"),
+		("cpu_system_pct", "system"),
+		("cpu_idle_pct", "idle"),
+		("cpu_iowait_pct", "iowait"),
+	]
+	for field, label in cpu_fields:
+		val = data.get(field)
+		if val is not None:
+			row.append(f"{label}: {val:.1f}%")
+		else:
+			row.append(None)
+	# Rellenar a 5 columnas
+	while len(row) < 5:
+		row.append(None)
+	return row
+
+
+def _row_procesos(data: dict) -> list:
+	"""Fila de Procesos y threads."""
+	procs_state = format_proc_state(data.get("procs_by_state", {}))
+	return [
+		"Procesos",
+		f"Total: {data.get('procs_total')}",
+		procs_state,
+		f"Threads: {data.get('threads_total')}",
+		None,
+	]
+
+
+def _row_context_switches(data: dict) -> list:
+	"""Fila de Context Switches por segundo."""
+	ctxt = data.get("ctxt_switches_per_sec")
+	return [
+		"Context Sw.",
+		f"{ctxt:.1f} / seg" if ctxt is not None else None,
+		None,
+		None,
+		None,
+	]
+
+
+def _row_forks(data: dict) -> list:
+	"""Fila de Forks por segundo."""
+	forks = data.get("forks_per_sec")
+	return [
+		"Forks",
+		f"{forks:.1f} / seg" if forks is not None else None,
+		None,
+		None,
+		None,
+	]
+
+
+def _row_top_cpu(data: dict) -> list:
+	"""Fila de Top 3 procesos por CPU."""
+	top_cpu = data.get("top_cpu")
+	if not top_cpu:
+		return None
+	row = ["Top CPU"]
+	for proc in top_cpu[:3]:
+		pid = proc.get("pid")
+		pct = proc.get("cpu_pct")
+		if pid is not None and pct is not None:
+			row.append(f"{pid} ({pct:.1f}%)")
+		else:
+			row.append(None)
+	# Rellenar a 5 columnas
+	while len(row) < 5:
+		row.append(None)
+	return row
+
+
+def _row_top_memoria(data: dict) -> list:
+	"""Fila de Top 3 procesos por memoria (RSS)."""
+	top_mem = data.get("top_mem")
+	if not top_mem:
+		return None
+	row = ["Top Memoria"]
+	for proc in top_mem[:3]:
+		pid = proc.get("pid")
+		rss = proc.get("rss_kb")
+		if pid is not None and rss is not None:
+			row.append(f"{pid} ({format_kb(rss)})")
+		else:
+			row.append(None)
+	# Rellenar a 5 columnas
+	while len(row) < 5:
+		row.append(None)
+	return row
+
+
+def view_sistema(data: dict) -> ViewTable:
+	"""Vista Sistema: métricas globales de la máquina en varias filas agrupadas por categoría.
+	Uptime, Load, Memoria, CPU, Procesos, Context Switches, Forks, Tops CPU y Memoria.
+	No filtra por proceso: solo datos globales de la dimensión 'sistema'.
+	"""
+	system_data = data.get("sistema", _EMPTY_DIM)
+	if not system_data["data"]:
+		# No hay datos aún: tabla vacía
+		return ViewTable(
+			title="Sistema",
+			columns=["Métrica", "Valor 1", "Valor 2", "Valor 3", "Valor 4"],
+			rows=[],
+			ts=system_data["ts"],
+		)
+
+	d = system_data["data"]
+	rows = [
+		_row_uptime(d),
+		_row_load(d),
+		_row_memoria(d),
+		_row_cpu(d),
+		_row_procesos(d),
+		_row_context_switches(d),
+		_row_forks(d),
+	]
+
+	# Las filas de tops se agregan solo si tienen datos
+	top_cpu_row = _row_top_cpu(d)
+	if top_cpu_row:
+		rows.append(top_cpu_row)
+
+	top_mem_row = _row_top_memoria(d)
+	if top_mem_row:
+		rows.append(top_mem_row)
+
+	return ViewTable(
+		title="Sistema",
+		columns=["Métrica", "Valor 1", "Valor 2", "Valor 3", "Valor 4"],
+		rows=rows,
+		ts=system_data["ts"],
+	)

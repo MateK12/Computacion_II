@@ -1,5 +1,5 @@
 import unittest
-from src.display.vista import view_fds, view_memory, view_scheduling, view_signals, view_summary, view_threads
+from src.display.vista import view_fds, view_memory, view_scheduling, view_signals, view_summary, view_threads, view_sistema
 
 
 class TestVista(unittest.TestCase):
@@ -19,7 +19,7 @@ class TestVista(unittest.TestCase):
         }
         table = view_summary(data)
         self.assertEqual(table.ts, 1.0)
-        self.assertEqual(table.rows, [[1, "R", 50.0, 1024, 1, "test"]])
+        self.assertEqual(table.rows, [[1, "R", 50.0, "1.0 MB", 1, "test"]])
 
     def test_view_summary_retorna_bien_dimension_con_datos_faltantes(self):
         # Si la dimensión summary existe pero cpu y memory no, la vista devuelve None en esas celdas
@@ -50,7 +50,7 @@ class TestVista(unittest.TestCase):
         }
         table = view_summary(data)
         self.assertEqual(table.ts, 2.0)
-        self.assertEqual(table.rows, [[1, "R", 50.0, 1024, 1, "test1"], [2, "S", 30.0, 2048, 2, "test2"]])
+        self.assertEqual(table.rows, [[1, "R", 50.0, "1.0 MB", 1, "test1"], [2, "S", 30.0, "2.0 MB", 2, "test2"]])
     def test_view_summary_no_retorna_si_falta_summary(self):
         # Si la dimensión summary no existe, la vista devuelve ts=None y rows=[]
         data = {
@@ -88,7 +88,7 @@ class TestVista(unittest.TestCase):
         }
         table = view_memory(data)
         self.assertEqual(table.ts, 3.0)
-        self.assertEqual(table.rows, [[1, 2048, 1024, 512, 256, 128, 64, 32, 16, 12, 3, "test"]])
+        self.assertEqual(table.rows, [[1, "2.0 MB", "1.0 MB", "512 KB", "256 KB", "128 KB", "64 KB", "32 KB", "16 KB", 12, 3, "test"]])
 
     def test_view_memory_retorna_bien_dimension_con_comando_faltante(self):
         # Si la dimensión memory existe pero summary no, la vista devuelve None en la columna Comando
@@ -97,7 +97,7 @@ class TestVista(unittest.TestCase):
         }
         table = view_memory(data)
         self.assertEqual(table.ts, 2.0)
-        self.assertEqual(table.rows, [[1, 2048, 1024, 512, 256, 128, 64, 32, 16, 12, 3, None]])
+        self.assertEqual(table.rows, [[1, "2.0 MB", "1.0 MB", "512 KB", "256 KB", "128 KB", "64 KB", "32 KB", "16 KB", 12, 3, None]])
 
     def test_view_memory_retorna_ts_de_su_dimension(self):
         # La vista memory devuelve el ts de la dimensión memory, no de summary
@@ -107,7 +107,7 @@ class TestVista(unittest.TestCase):
         }
         table = view_memory(data)
         self.assertEqual(table.ts, 4.0)
-        self.assertEqual(table.rows, [[1, 2048, 1024, 512, 256, 128, 64, 32, 16, 12, 3, "test"]])
+        self.assertEqual(table.rows, [[1, "2.0 MB", "1.0 MB", "512 KB", "256 KB", "128 KB", "64 KB", "32 KB", "16 KB", 12, 3, "test"]])
 
     def test_view_memory_ordena_pids_e_info(self):
         # La vista ordena los PIDs y la info correspondiente
@@ -117,7 +117,7 @@ class TestVista(unittest.TestCase):
         }
         table = view_memory(data)
         self.assertEqual(table.ts, 5.0)
-        self.assertEqual(table.rows, [[1, 2048, 1024, 512, 256, 128, 64, 32, 16, 12, 3, "test1"], [2, 4096, 2048, 1024, 512, 256, 128, 64, 32, 20, 5, "test2"]])
+        self.assertEqual(table.rows, [[1, "2.0 MB", "1.0 MB", "512 KB", "256 KB", "128 KB", "64 KB", "32 KB", "16 KB", 12, 3, "test1"], [2, "4.0 MB", "2.0 MB", "1.0 MB", "512 KB", "256 KB", "128 KB", "64 KB", "32 KB", 20, 5, "test2"]])
 
     def test_view_memory_filtra_procesos_con_datos_faltantes(self):
         # La vista filtra los procesos que tienen None en alguna de las columnas de memoria
@@ -128,7 +128,7 @@ class TestVista(unittest.TestCase):
         table = view_memory(data)
         self.assertEqual(table.ts, 6.0)
         # el PID 2 (kthread) se filtra por sus vm_* None aunque tenga deltas de faults
-        self.assertEqual(table.rows, [[1, 2048, 1024, 512, 256, 128, 64, 32, 16, 12, 3, "test1"]])
+        self.assertEqual(table.rows, [[1, "2.0 MB", "1.0 MB", "512 KB", "256 KB", "128 KB", "64 KB", "32 KB", "16 KB", 12, 3, "test1"]])
 
     def test_view_memory_no_retorna_si_falta_memory(self):
         # Si la dimensión memory no existe, la vista devuelve ts=None y rows=[]
@@ -151,13 +151,13 @@ class TestVista(unittest.TestCase):
 
     def test_view_memory_no_filtra_deltas_de_faults_none(self):
         # Los *_delta en None (primer ciclo del monitor, o PID reusado) son transitorios
-        
+
         data = {
             "summary": {"ts": 7.0, "data": {1: {"state": "R", "threads": 1, "name": "test"}}},
             "memory": {"ts": 7.0, "data": {1: {"vm_size": 2048, "vm_rss": 1024, "vm_hwm": 512, "vm_data": 256, "vm_stack": 128, "vm_exe": 64, "vm_lib": 32, "vm_swap": 16, "minflt_delta": None, "majflt_delta": None}}},
         }
         table = view_memory(data)
-        self.assertEqual(table.rows, [[1, 2048, 1024, 512, 256, 128, 64, 32, 16, None, None, "test"]])
+        self.assertEqual(table.rows, [[1, "2.0 MB", "1.0 MB", "512 KB", "256 KB", "128 KB", "64 KB", "32 KB", "16 KB", None, None, "test"]])
 
     #VIEW FDS
 
@@ -353,6 +353,130 @@ class TestVista(unittest.TestCase):
         self.assertEqual([row[1] for row in table.rows], [300, 400, 100, 200])
 
     
+
+
+    # VIEW SISTEMA
+
+    def test_view_sistema_retorna_bien_dimension_ausente(self):
+        # Si la dimensión sistema no existe, la vista devuelve ts=None y rows=[]
+        data = {}
+        table = view_sistema(data)
+        self.assertEqual(table.ts, None)
+        self.assertEqual(table.rows, [])
+
+    def test_view_sistema_retorna_bien_dimension_vacia(self):
+        # Si la dimensión sistema existe pero está vacía, la vista devuelve ts=None y rows=[]
+        data = {
+            "sistema": {"ts": None, "data": {}}
+        }
+        table = view_sistema(data)
+        self.assertEqual(table.ts, None)
+        self.assertEqual(table.rows, [])
+
+    def test_view_sistema_retorna_bien_dimension_con_datos(self):
+        # Si la dimensión sistema existe con datos, la vista devuelve las métricas globales
+        data = {
+            "sistema": {
+                "ts": 1.0,
+                "data": {
+                    "uptime": 86400,  # 1 día
+                    "boot_time": 1722192600,
+                    "load_1m": 0.5,
+                    "load_5m": 0.4,
+                    "load_15m": 0.3,
+                    "mem_total_kb": 8 * 1024 * 1024,
+                    "mem_free_kb": 3 * 1024 * 1024,
+                    "mem_cached_kb": 2 * 1024 * 1024,
+                    "swap_used_kb": 0,
+                    "swap_total_kb": 4 * 1024 * 1024,
+                    "cpu_user_pct": 20.0,
+                    "cpu_system_pct": 10.0,
+                    "cpu_idle_pct": 70.0,
+                    "cpu_iowait_pct": 0.0,
+                    "procs_total": 42,
+                    "procs_by_state": {"R": 2, "S": 38, "D": 1, "T": 0, "Z": 1},
+                    "threads_total": 105,
+                    "ctxt_switches_per_sec": 1234.5,
+                    "forks_per_sec": 12.3,
+                    "top_cpu": [
+                        {"pid": 1234, "cpu_pct": 25.0},
+                        {"pid": 1235, "cpu_pct": 18.0},
+                        {"pid": 1236, "cpu_pct": 14.0},
+                    ],
+                    "top_mem": [
+                        {"pid": 1234, "rss_kb": 262144},
+                        {"pid": 1235, "rss_kb": 204800},
+                        {"pid": 1236, "rss_kb": 153600},
+                    ],
+                }
+            }
+        }
+        table = view_sistema(data)
+        self.assertEqual(table.ts, 1.0)
+        # Debe tener 9 filas: Uptime, Load, Memoria, CPU, Procesos, Context Sw., Forks, Top CPU, Top Memoria
+        self.assertEqual(len(table.rows), 9)
+        # Verificar que la primer fila es Uptime
+        self.assertEqual(table.rows[0][0], "Uptime")
+        # Verificar que la segunda fila es Load
+        self.assertEqual(table.rows[1][0], "Load")
+        # Verificar que la tercer fila es Memoria
+        self.assertEqual(table.rows[2][0], "Memoria")
+        # Verificar que la cuarta fila es CPU
+        self.assertEqual(table.rows[3][0], "CPU")
+        # Verificar que la quinta fila es Procesos
+        self.assertEqual(table.rows[4][0], "Procesos")
+        # Verificar que la sexta fila es Context Sw.
+        self.assertEqual(table.rows[5][0], "Context Sw.")
+        # Verificar que la séptima fila es Forks
+        self.assertEqual(table.rows[6][0], "Forks")
+        # Verificar que la octava fila es Top CPU
+        self.assertEqual(table.rows[7][0], "Top CPU")
+        # Verificar que la novena fila es Top Memoria
+        self.assertEqual(table.rows[8][0], "Top Memoria")
+
+    def test_view_sistema_titulo(self):
+        # La vista debe tener el título "Sistema"
+        data = {
+            "sistema": {
+                "ts": 1.0,
+                "data": {
+                    "uptime": 100,
+                    "boot_time": None,
+                    "load_1m": 0.5,
+                    "load_5m": 0.4,
+                    "load_15m": 0.3,
+                    "mem_total_kb": 1000,
+                    "mem_free_kb": 500,
+                    "mem_cached_kb": 300,
+                    "swap_used_kb": 0,
+                    "swap_total_kb": 500,
+                }
+            }
+        }
+        table = view_sistema(data)
+        self.assertEqual(table.title, "Sistema")
+
+    def test_view_sistema_columnas(self):
+        # La vista debe tener 5 columnas: Métrica, Valor 1, Valor 2, Valor 3, Valor 4
+        data = {
+            "sistema": {
+                "ts": 1.0,
+                "data": {
+                    "uptime": 100,
+                    "boot_time": None,
+                    "load_1m": 0.5,
+                    "load_5m": 0.4,
+                    "load_15m": 0.3,
+                    "mem_total_kb": 1000,
+                    "mem_free_kb": 500,
+                    "mem_cached_kb": 300,
+                    "swap_used_kb": 0,
+                    "swap_total_kb": 500,
+                }
+            }
+        }
+        table = view_sistema(data)
+        self.assertEqual(table.columns, ["Métrica", "Valor 1", "Valor 2", "Valor 3", "Valor 4"])
 
 
 if __name__ == "__main__":
