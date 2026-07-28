@@ -106,6 +106,58 @@ def view_memory(data: dict) -> ViewTable:
         ts=memory_data["ts"],
     )
 
+# Tipos que clasifica AnalyzerFileDescriptor; lo que no matchea acá cae en "Otros".
+_FD_TYPE_COLUMNS = [
+    ("file", "File"),
+    ("socket", "Sock"),
+    ("pipe", "Pipe"),
+    ("anon_inode", "Anon"),
+]
+# Cuántos FDs entran en la columna de muestra (los de numeración más baja:
+# 0/1/2 suelen ser stdin/stdout/stderr y dicen mucho del proceso).
+_FD_SAMPLE_SIZE = 2
+
+
+def _fmt_fd_sample(fds: dict) -> str:
+    """Muestra de los FDs más bajos con su destino: '0:/dev/pts/1, 1:pipe:[123]'.
+    Sin FDs -> '' (kthreads y procesos ajenos sin permiso de lectura)."""
+    sample = sorted(fds)[:_FD_SAMPLE_SIZE]
+    return ", ".join(f"{fd}:{fds[fd]['dest']}" for fd in sample)
+
+
+def view_fds(data: dict) -> ViewTable:
+    """Vista File Descriptors: una fila por proceso con el total de FDs abiertos,
+    el conteo por tipo y una muestra de los FDs más bajos con sus destinos.
+    La dimensión base es `fds`: un proceso sin entrada ahí no tiene fila.
+    (El detalle completo por proceso queda para cuando haya selección por teclado.)
+    """
+    summary = data.get("summary", _EMPTY_DIM)
+    fds_data = data.get("fds", _EMPTY_DIM)
+    labels = [label for _, label in _FD_TYPE_COLUMNS]
+
+    rows = []
+    for pid in sorted(fds_data["data"]):
+        proc = summary["data"].get(pid)
+        fds = fds_data["data"][pid]
+        types = [fd["type"] for fd in fds.values()]
+        counts = [types.count(key) for key, _ in _FD_TYPE_COLUMNS]
+        rows.append([
+            pid,
+            len(fds),
+            *counts,
+            len(fds) - sum(counts),   # Otros: lo que el analizador marcó unknown
+            _fmt_fd_sample(fds),
+            proc["name"] if proc else None,
+        ])
+
+    return ViewTable(
+        title="File Descriptors",
+        columns=["PID", "Total"] + labels + ["Otros", "Destinos", "Comando"],
+        rows=rows,
+        ts=fds_data["ts"],
+    )
+
+
 def view_threads(data: dict) -> ViewTable:
     """Vista Threads: una fila por thread con información de estado, CPU%, y cambios de contexto.
     La dimensión base es `threads`: un thread sin entrada ahí no tiene fila.

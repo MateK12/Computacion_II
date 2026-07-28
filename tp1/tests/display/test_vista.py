@@ -1,5 +1,5 @@
 import unittest
-from src.display.vista import view_memory, view_scheduling, view_signals, view_summary, view_threads
+from src.display.vista import view_fds, view_memory, view_scheduling, view_signals, view_summary, view_threads
 
 
 class TestVista(unittest.TestCase):
@@ -158,6 +158,79 @@ class TestVista(unittest.TestCase):
         }
         table = view_memory(data)
         self.assertEqual(table.rows, [[1, 2048, 1024, 512, 256, 128, 64, 32, 16, None, None, "test"]])
+
+    #VIEW FDS
+
+    def test_view_fds_retorna_bien_dimension_ausente(self):
+        # Si la dimensión fds no existe, la vista devuelve ts=None y rows=[]
+        data = {}
+        table = view_fds(data)
+        self.assertEqual(table.ts, None)
+        self.assertEqual(table.rows, [])
+
+    def test_view_fds_cuenta_por_tipo_y_muestra_destinos(self):
+        # Conteos por tipo + total, y la muestra son los 2 FDs más bajos con destino
+        data = {
+            "summary": {"ts": 1.0, "data": {1: {"state": "R", "threads": 1, "name": "test"}}},
+            "fds": {"ts": 1.0, "data": {1: {
+                0: {"dest": "/dev/pts/1", "type": "file"},
+                1: {"dest": "/dev/pts/1", "type": "file"},
+                3: {"dest": "socket:[123]", "type": "socket"},
+                4: {"dest": "pipe:[456]", "type": "pipe"},
+                5: {"dest": "anon_inode:[eventfd]", "type": "anon_inode"},
+            }}},
+        }
+        table = view_fds(data)
+        self.assertEqual(table.ts, 1.0)
+        self.assertEqual(table.rows, [[1, 5, 2, 1, 1, 1, 0, "0:/dev/pts/1, 1:/dev/pts/1", "test"]])
+
+    def test_view_fds_tipo_desconocido_cuenta_como_otros(self):
+        # Un type que no está en las columnas conocidas suma al Total y a Otros
+        data = {
+            "fds": {"ts": 2.0, "data": {1: {
+                0: {"dest": "mnt:[4026531841]", "type": "unknown"},
+            }}},
+        }
+        table = view_fds(data)
+        self.assertEqual(table.rows, [[1, 1, 0, 0, 0, 0, 1, "0:mnt:[4026531841]", None]])
+
+    def test_view_fds_muestra_ordena_numericamente(self):
+        # La muestra toma los FDs más bajos por valor numérico (10 > 2, no "10" < "2")
+        data = {
+            "fds": {"ts": 3.0, "data": {1: {
+                10: {"dest": "socket:[123]", "type": "socket"},
+                2: {"dest": "/var/log/app.log", "type": "file"},
+                7: {"dest": "pipe:[456]", "type": "pipe"},
+            }}},
+        }
+        table = view_fds(data)
+        self.assertEqual(table.rows[0][7], "2:/var/log/app.log, 7:pipe:[456]")
+
+    def test_view_fds_proceso_sin_fds(self):
+        # Un proceso con dict de FDs vacío (kthread) tiene fila con todo en 0 y muestra vacía
+        data = {
+            "summary": {"ts": 4.0, "data": {1: {"state": "S", "threads": 1, "name": "kworker"}}},
+            "fds": {"ts": 4.0, "data": {1: {}}},
+        }
+        table = view_fds(data)
+        self.assertEqual(table.rows, [[1, 0, 0, 0, 0, 0, 0, "", "kworker"]])
+
+    def test_view_fds_retorna_bien_dimension_con_comando_faltante(self):
+        # PID en fds pero no en summary -> None en la columna Comando
+        data = {
+            "fds": {"ts": 5.0, "data": {1: {0: {"dest": "/dev/null", "type": "file"}}}},
+        }
+        table = view_fds(data)
+        self.assertEqual(table.rows, [[1, 1, 1, 0, 0, 0, 0, "0:/dev/null", None]])
+
+    def test_view_fds_ordena_pids(self):
+        # La vista ordena los PIDs para que el orden sea estable entre frames
+        entry = {0: {"dest": "/dev/null", "type": "file"}}
+        data = {
+            "fds": {"ts": 6.0, "data": {2: dict(entry), 1: dict(entry)}},
+        }
+        table = view_fds(data)
+        self.assertEqual([row[0] for row in table.rows], [1, 2])
 
     #VIEW SCHEDULING
 
