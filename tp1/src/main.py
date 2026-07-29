@@ -1,4 +1,4 @@
-import time
+import select
 import multiprocessing as mp
 
 from src.procfs import ProcFS
@@ -11,6 +11,10 @@ from src.analizadores.senales import AnalyzerSignals
 from src.analizadores.fds import AnalyzerFileDescriptor
 from src.analizadores.scheduling import AnalyzerScheduling
 from src.analizadores.sistema import AnalyzerSystem
+import sys
+import termios
+import tty
+import os
 
 ANALYZERS = [
     AnalyzerSummary,
@@ -22,6 +26,8 @@ ANALYZERS = [
     AnalyzerScheduling,
     AnalyzerSystem,
 ]
+
+VIEW_KEYS = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6,"r": 0, "m": 1, "f": 2, "t": 3, "s": 4, "p": 5, "g": 6}
 
 def run_collector(procfs, shared_pids):
     Collector(procfs, shared_pids, sleep_interval=2).collect()
@@ -41,6 +47,15 @@ def run_display(snapshot, active_view):
     display.run_display()
 
 # --- orquestador -------------------------------------------------------------
+def run_key_listener(active_view, fd):
+    """Escucha las teclas presionadas y actualiza la vista activa."""
+    key_ready,_, _ = select.select([sys.stdin], [], [], 1)
+    if key_ready:
+        key = os.read(fd, 1).decode()
+        view = VIEW_KEYS.get(key, None)
+
+        if view is not None:
+            active_view.value = view
 
 def main():
     mp.set_start_method("fork")
@@ -52,6 +67,8 @@ def main():
     shared_pids = manager.list()
     
     active_view = mp.Value("i", 0)
+
+
 
     procs = [
         mp.Process(target=run_display, args=(snapshot, active_view), name="display"),
@@ -68,9 +85,14 @@ def main():
     for p in procs:
         p.start()
 
+
     try: #TO do quitar cuando se implemente el shutdown de los analizadores y del collector
+        fd = sys.stdin.fileno() 
+
+        estado_original = termios.tcgetattr(fd)
+        tty.setcbreak(fd)
         while True:
-            time.sleep(60)
+            run_key_listener(active_view,fd)
     except KeyboardInterrupt:
         print("\nbajando...")
     finally:
@@ -78,6 +100,8 @@ def main():
             p.terminate()
         for p in procs:
             p.join()
+        termios.tcsetattr(fd, termios.TCSADRAIN, estado_original)
+
 
 
 if __name__ == "__main__":
