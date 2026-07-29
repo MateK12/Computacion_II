@@ -31,13 +31,13 @@ def run_analyzer(cls, procfs, shared_pids, snapshot, interval):
     analyzer = cls(procfs, shared_pids, snapshot, interval)
     analyzer.analyze()
 
-def run_display(snapshot):
+def run_display(snapshot, active_view):
     """Crea y ejecuta el display."""
     from src.display.display import Display
     from src.display.rich_renderer import RichRenderer
 
     renderer = RichRenderer()
-    display = Display(renderer, snapshot)
+    display = Display(renderer, snapshot, active_view)
     display.run_display()
 
 # --- orquestador -------------------------------------------------------------
@@ -50,9 +50,11 @@ def main():
     manager = mp.Manager()
     snapshot = manager.dict()
     shared_pids = manager.list()
+    
+    active_view = mp.Value("i", 0)
 
     procs = [
-        mp.Process(target=run_display, args=(snapshot,), name="display"),
+        mp.Process(target=run_display, args=(snapshot, active_view), name="display"),
         mp.Process(target=run_collector, args=(procfs, shared_pids), name="collector"),
         *[
             mp.Process(
