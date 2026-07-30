@@ -35,6 +35,9 @@ class RichRenderer(IRenderer):
         table = Table(title=f"{view.title} — {subtitle}")
         for column in view.columns:
             table.add_column(column)
-        for row in view.rows:
-            table.add_row(*(_NO_DATA if cell is None else str(cell) for cell in row))
+        for i, row in enumerate(view.rows):
+            table.add_row(
+                *(_NO_DATA if cell is None else str(cell) for cell in row),
+                style="reverse" if i == view.selected else None,
+            )
         return table

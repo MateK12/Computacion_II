@@ -294,6 +294,8 @@ def view_help(data: dict) -> ViewTable:
             ["7 / g", "Vista Sistema"],
             ["c", "Cambiar orden: natural (PID) → CPU% → RSS"],
             ["+ / -", "Ajustar intervalo de la vista activa (±0.5s)"],
+            ["↑ / ↓", "Navegar por la lista de procesos"],
+            ["Enter", "Pin / despin del proceso seleccionado"],
             ["h / ?", "Esta ayuda"],
             ["q", "Salir"],
         ],

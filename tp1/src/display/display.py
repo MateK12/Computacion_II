@@ -14,6 +14,7 @@ from .vista import (
     view_sistema,
     view_help,
 )
+import shutil
 import signal
 import sys
 import time
@@ -66,6 +67,51 @@ def _sorted_view(view: ViewTable, mode: int) -> ViewTable:
     return replace(view, rows=sorted(view.rows, key=key), title=f"{view.title} ↓{name}")
 
 
+def _page_size() -> int:
+    """Filas de datos que entran en la terminal actual, descontando el marco
+    de la tabla (título, encabezados, bordes)."""
+    return max(5, shutil.get_terminal_size().lines - 8)
+
+
+def _window(selected: int, total: int, page: int) -> tuple:
+    """(start, end) de la ventana de `page` filas que mantiene visible la
+    selección, centrándola cuando se puede."""
+    start = max(0, min(selected - page // 2, total - page))
+    return start, start + page
+
+
+def _apply_selection(view: ViewTable, ui, page: int) -> ViewTable:
+    """Resuelve qué fila está seleccionada, publica lo que solo el display
+    sabe (row_count y el PID bajo el cursor) y recorta la tabla a una ventana
+    alrededor de la selección.
+
+    Con pin activo la selección es identidad (sigue al PID donde esté tras el
+    sort); si el PID pinneado murió o no está, cae a la selección posicional.
+    Vistas sin columna PID (Sistema, Ayuda) no tienen selección.
+    """
+    if "PID" not in view.columns or not view.rows:
+        ui.row_count.value = 0
+        ui.pid_at_selected.value = -1
+        return view
+
+    pid_col = view.columns.index("PID")
+    ui.row_count.value = len(view.rows)
+
+    selected = None
+    pinned = ui.pinned_pid.value
+    if pinned != -1:
+        selected = next(
+            (i for i, row in enumerate(view.rows) if row[pid_col] == pinned), None
+        )
+    if selected is None:
+        # el cursor de main puede apuntar más allá de la tabla actual: clamp
+        selected = min(ui.selected_row.value, len(view.rows) - 1)
+
+    ui.pid_at_selected.value = view.rows[selected][pid_col]
+    start, end = _window(selected, len(view.rows), page)
+    return replace(view, rows=view.rows[start:end], selected=selected - start)
+
+
 def _on_sigterm(signum, frame):
     """Handler de SIGTERM: solo levanta SystemExit para que la limpieza
     corra en el flujo normal (async-signal-safe: acá no se toca ningún objeto).
@@ -78,11 +124,10 @@ class Display:
     mostrar la información en pantalla y de recibir la entrada del usuario.
     """
 
-    def __init__(self, renderer: IRenderer, snapshot, active_view, sort_mode):
+    def __init__(self, renderer: IRenderer, snapshot, ui):
         self.renderer = renderer
         self._snapshot = snapshot  # copia plana del snapshot
-        self._active_view = active_view  # mp.Value('i'): índice de la vista activa en VIEWS
-        self._sort_mode = sort_mode  # mp.Value('i'): índice en _SORT_MODES
+        self._ui = ui  # UIState: main escribe las teclas, acá escribimos row_count y pid_at_selected
 
     def _start(self):
         self.renderer.start()
@@ -100,9 +145,11 @@ class Display:
         try:
             while True:
                 snapshot = dict(self._snapshot)
-                
-                view = VIEWS[self._active_view.value]
-                self._render(_sorted_view(view(snapshot), self._sort_mode.value))
+
+                view = VIEWS[self._ui.active_view.value]
+                table = _sorted_view(view(snapshot), self._ui.sort_mode.value)
+                table = _apply_selection(table, self._ui, _page_size())
+                self._render(table)
                 time.sleep(1)
         finally: #corre en systemExit
             self.stop()

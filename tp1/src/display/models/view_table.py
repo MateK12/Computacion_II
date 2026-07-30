@@ -8,3 +8,4 @@ class ViewTable:
     columns: list
     rows: list = field(default_factory=list)   # una fila por proceso, mismas posiciones que columns
     ts: float | None = None                    # None si la dimensión aún no existe
+    selected: int | None = None                # índice en rows a resaltar (None = sin selección)
