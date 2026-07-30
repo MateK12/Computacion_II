@@ -276,6 +276,30 @@ def view_signals(data: dict) -> ViewTable:
     )
 
 
+def view_help(data: dict) -> ViewTable:
+    """Vista Ayuda: los keybindings disponibles. Es contenido estático — recibe
+    `data` solo para cumplir el contrato de firma de toda vista. Se extiende a
+    mano con cada atajo nuevo que se implementa (no listar teclas pendientes).
+    """
+    return ViewTable(
+        title="Ayuda",
+        columns=["Tecla", "Acción"],
+        rows=[
+            ["1 / r", "Vista Resumen"],
+            ["2 / m", "Vista Memoria"],
+            ["3 / f", "Vista File Descriptors"],
+            ["4 / t", "Vista Hilos"],
+            ["5 / s", "Vista Señales"],
+            ["6 / p", "Vista Scheduling"],
+            ["7 / g", "Vista Sistema"],
+            ["c", "Cambiar orden: natural (PID) → CPU% → RSS"],
+            ["h / ?", "Esta ayuda"],
+            ["q", "Salir"],
+        ],
+        ts=None,
+    )
+
+
 def _row_uptime(data: dict) -> list:
 	"""Fila de Uptime y Boot Time."""
 	uptime = format_uptime(data.get("uptime"))

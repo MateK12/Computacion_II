@@ -7,6 +7,7 @@ from src.display.formatters import (
 	format_time_unix,
 	format_kb,
 	format_proc_state,
+	parse_kb,
 )
 
 
@@ -93,6 +94,35 @@ class TestFormatProcState(unittest.TestCase):
 
 	def test_none_input(self):
 		self.assertIsNone(format_proc_state(None))
+
+
+class TestParseKb(unittest.TestCase):
+	def test_kb(self):
+		self.assertEqual(parse_kb("512 KB"), 512.0)
+
+	def test_mb(self):
+		self.assertEqual(parse_kb("1.0 MB"), 1024.0)
+
+	def test_gb(self):
+		self.assertEqual(parse_kb("1.5 GB"), 1.5 * 1024**2)
+
+	def test_roundtrip_con_format_kb(self):
+		# El par format/parse tiene que ser consistente (con la pérdida de
+		# precisión del redondeo a 1 decimal): el orden relativo se preserva.
+		chico, grande = parse_kb(format_kb(2048)), parse_kb(format_kb(999999))
+		self.assertLess(chico, grande)
+
+	def test_none(self):
+		self.assertIsNone(parse_kb(None))
+
+	def test_no_string(self):
+		self.assertIsNone(parse_kb(1024))
+
+	def test_texto_ajeno(self):
+		self.assertIsNone(parse_kb("no es un tamaño"))
+
+	def test_unidad_desconocida(self):
+		self.assertIsNone(parse_kb("3 XB"))
 
 
 if __name__ == "__main__":

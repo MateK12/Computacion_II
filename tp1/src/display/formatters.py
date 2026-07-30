@@ -51,6 +51,20 @@ def format_kb(kb: int) -> str:
 	return f"{kb:.1f} PB"
 
 
+_KB_PER_UNIT = {"KB": 1, "MB": 1024, "GB": 1024**2, "TB": 1024**3, "PB": 1024**4}
+
+
+def parse_kb(text: str) -> float:
+	"""Inversa de format_kb: '1.5 GB' -> kB.	"""
+	if not isinstance(text, str):
+		return None
+	try:
+		num, unit = text.split()
+		return float(num) * _KB_PER_UNIT[unit]
+	except (ValueError, KeyError):
+		return None
+
+
 def format_proc_state(by_state: dict) -> str:
 	"""Convierte dict de estados {R: 2, S: 38, ...} a 'R: 2  S: 38  ...'.
 	Orden fijo: R, S, D, T, Z (solo los que tengan count > 0).

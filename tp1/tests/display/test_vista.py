@@ -1,5 +1,5 @@
 import unittest
-from src.display.vista import view_fds, view_memory, view_scheduling, view_signals, view_summary, view_threads, view_sistema
+from src.display.vista import view_fds, view_memory, view_scheduling, view_signals, view_summary, view_threads, view_sistema, view_help
 
 
 class TestVista(unittest.TestCase):
@@ -477,6 +477,23 @@ class TestVista(unittest.TestCase):
         }
         table = view_sistema(data)
         self.assertEqual(table.columns, ["Métrica", "Valor 1", "Valor 2", "Valor 3", "Valor 4"])
+
+
+class TestViewHelp(unittest.TestCase):
+    def test_ignora_el_snapshot(self):
+        # Es estática: el mismo resultado con snapshot vacío o con datos.
+        self.assertEqual(view_help({}).rows, view_help({"summary": {"ts": 1.0, "data": {}}}).rows)
+
+    def test_estructura(self):
+        table = view_help({})
+        self.assertEqual(table.title, "Ayuda")
+        self.assertEqual(table.columns, ["Tecla", "Acción"])
+        self.assertTrue(table.rows)
+
+    def test_lista_las_teclas_implementadas(self):
+        teclas = [row[0] for row in view_help({}).rows]
+        for esperada in ("c", "q", "h / ?"):
+            self.assertIn(esperada, teclas)
 
 
 if __name__ == "__main__":
