@@ -1,1 +1,11 @@
+# venv del tp1
 tp1/tp1/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# artefactos del monitor
+dump_*.json
