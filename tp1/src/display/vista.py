@@ -293,6 +293,7 @@ def view_help(data: dict) -> ViewTable:
             ["6 / p", "Vista Scheduling"],
             ["7 / g", "Vista Sistema"],
             ["c", "Cambiar orden: natural (PID) → CPU% → RSS"],
+            ["+ / -", "Ajustar intervalo de la vista activa (±0.5s)"],
             ["h / ?", "Esta ayuda"],
             ["q", "Salir"],
         ],

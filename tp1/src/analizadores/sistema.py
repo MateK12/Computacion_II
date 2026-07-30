@@ -1,5 +1,7 @@
 import time
 
+from .pacing import sleep_interval
+
 from src.procfs import ProcFS
 
 
@@ -161,4 +163,4 @@ class AnalyzerSystem:
         """Loop de vida del analizador: un ciclo cada `interval` segundos."""
         while True:
             self._ciclo()
-            time.sleep(self.interval)
+            sleep_interval(self.interval)

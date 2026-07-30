@@ -492,7 +492,7 @@ class TestViewHelp(unittest.TestCase):
 
     def test_lista_las_teclas_implementadas(self):
         teclas = [row[0] for row in view_help({}).rows]
-        for esperada in ("c", "q", "h / ?"):
+        for esperada in ("c", "q", "h / ?", "+ / -"):
             self.assertIn(esperada, teclas)
 
 

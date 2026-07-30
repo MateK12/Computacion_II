@@ -1,5 +1,7 @@
 import time
 
+from .pacing import sleep_interval
+
 
 class AnalyzerFileDescriptor:
     def __init__(self, procfs, shared_pids, snapshot, interval):
@@ -41,4 +43,4 @@ class AnalyzerFileDescriptor:
         """Loop de vida del analizador: un ciclo cada `interval` segundos."""
         while True:
             self._ciclo()
-            time.sleep(self.interval)
+            sleep_interval(self.interval)

@@ -1,5 +1,7 @@
 import time
 
+from .pacing import sleep_interval
+
 
 class AnalyzerSignals:
     def __init__(self, procfs, shared_pids, snapshot, interval):
@@ -45,4 +47,4 @@ class AnalyzerSignals:
         """Loop de vida del analizador: un ciclo cada `interval` segundos."""
         while True:
             self._ciclo()
-            time.sleep(self.interval)
+            sleep_interval(self.interval)

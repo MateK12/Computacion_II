@@ -1,4 +1,6 @@
 import time
+
+from .pacing import sleep_interval
 import os
 
 class AnalyzerCPU:
@@ -52,7 +54,7 @@ class AnalyzerCPU:
         """Loop de vida del analizador: un ciclo cada `interval` segundos."""
         while True:
             self._ciclo()
-            time.sleep(self.interval)
+            sleep_interval(self.interval)
             
     def _rebuild_prev(self,status):
         """Reconstruye el diccionario previo a partir del snapshot actual."""

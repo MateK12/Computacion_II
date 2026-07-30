@@ -16,15 +16,17 @@ import termios
 import tty
 import os
 
-ANALYZERS = [
-    AnalyzerSummary,
-    AnalyzerCPU,
-    AnalyzerThreads,
-    AnalyzerMemory,
-    AnalyzerSignals,
-    AnalyzerFileDescriptor,
-    AnalyzerScheduling,
-    AnalyzerSystem,
+# (clase, intervalo default, intervalo mínimo) según la tabla de la consigna.
+# CPU no tiene vista propia: acompaña a Resumen, mismo default/mínimo que Summary.
+ANALYZER_SPECS = [
+    (AnalyzerSummary, 2.0, 0.5),
+    (AnalyzerCPU, 2.0, 0.5),
+    (AnalyzerThreads, 2.0, 0.5),
+    (AnalyzerMemory, 3.0, 1.0),
+    (AnalyzerSignals, 10.0, 5.0),
+    (AnalyzerFileDescriptor, 5.0, 2.0),
+    (AnalyzerScheduling, 10.0, 5.0),
+    (AnalyzerSystem, 2.0, 1.0),
 ]
 
 VIEW_KEYS = {
@@ -32,6 +34,23 @@ VIEW_KEYS = {
     "r": 0, "m": 1, "f": 2, "t": 3, "s": 4, "p": 5, "g": 6,
     "h": 7, "?": 7,
 }
+
+# Vista activa -> índices en ANALYZER_SPECS cuyos intervalos ajustan '+'/'-'.
+# Resumen late al ritmo de summary Y cpu (decisión: los dos son su pulso);
+# la Ayuda no ajusta a nadie.
+VIEW_ANALYZERS = {
+    0: (0, 1),   # Resumen -> Summary + CPU
+    1: (3,),     # Memoria
+    2: (5,),     # File Descriptors
+    3: (2,),     # Threads
+    4: (4,),     # Señales
+    5: (6,),     # Scheduling
+    6: (7,),     # Sistema
+    7: (),       # Ayuda
+}
+
+INTERVAL_STEP = 0.5
+INTERVAL_MAX = 60.0
 
 def run_collector(procfs, shared_pids):
     Collector(procfs, shared_pids, sleep_interval=2).collect()
@@ -51,7 +70,7 @@ def run_display(snapshot, active_view, sort_mode):
     display.run_display()
 
 # --- orquestador -------------------------------------------------------------
-def run_key_listener(active_view, sort_mode, fd):
+def run_key_listener(active_view, sort_mode, intervals, fd):
     """Escucha una tecla (con timeout de 1s) y actualiza el estado de UI
     compartido. Devuelve False cuando el usuario pide salir con 'q'.
     """
@@ -66,6 +85,12 @@ def run_key_listener(active_view, sort_mode, fd):
             # 0 natural(PID) → 1 CPU% → 2 RSS; el significado vive en
             # display._SORT_MODES. Único escritor: sin lock.
             sort_mode.value = (sort_mode.value + 1) % 3
+        elif key in ("+", "-"):
+            delta = INTERVAL_STEP if key == "+" else -INTERVAL_STEP
+            for i in VIEW_ANALYZERS.get(active_view.value, ()):
+                minimum = ANALYZER_SPECS[i][2]
+                interval = intervals[i]
+                interval.value = min(max(interval.value + delta, minimum), INTERVAL_MAX)
         elif key in VIEW_KEYS:
             active_view.value = VIEW_KEYS[key]
     return True
@@ -81,6 +106,9 @@ def main():
     
     active_view = mp.Value("i", 0)
     sort_mode = mp.Value("i", 0)
+    # Un Value('d') por analizador, creado antes del fork: main escribe con
+    # +/- y cada analizador lo relee en su sleep de a ticks (pacing.py).
+    intervals = [mp.Value("d", default) for _, default, _ in ANALYZER_SPECS]
 
     procs = [
         mp.Process(target=run_display, args=(snapshot, active_view, sort_mode), name="display"),
@@ -88,10 +116,10 @@ def main():
         *[
             mp.Process(
                 target=run_analyzer,
-                args=(cls, procfs, shared_pids, snapshot, 2),
+                args=(cls, procfs, shared_pids, snapshot, interval),
                 name=cls.__name__,
             )
-            for cls in ANALYZERS
+            for (cls, _, _), interval in zip(ANALYZER_SPECS, intervals)
         ],
     ]
     for p in procs:
@@ -105,7 +133,7 @@ def main():
         tty.setcbreak(fd)
         running = True
         while running:
-            running = run_key_listener(active_view, sort_mode, fd)
+            running = run_key_listener(active_view, sort_mode, intervals, fd)
     except KeyboardInterrupt:
         print("\nbajando...")
     finally:
