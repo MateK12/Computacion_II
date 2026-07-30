@@ -21,3 +21,5 @@ class UIState:
     pinned_pid: object       # Value('i') — escribe main: PID pinneado con Enter (-1 = sin pin)
     pid_at_selected: object  # Value('i') — escribe DISPLAY: PID bajo el cursor (-1 = no hay)
     row_count: object        # Value('i') — escribe DISPLAY: filas de la tabla actual
+    filter_mode: object        # Value('i') — escribe main: modo de filtro (0 = comando 1= usuario)
+    filter_value: object       # Array('u',128) — escribe main: valor del filtro (comando o usuario)

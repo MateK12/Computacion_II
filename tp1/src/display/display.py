@@ -112,6 +112,17 @@ def _apply_selection(view: ViewTable, ui, page: int) -> ViewTable:
     return replace(view, rows=view.rows[start:end], selected=selected - start)
 
 
+def _inject_filter_prompt(view: ViewTable, ui) -> ViewTable:
+    """Si estamos en modo input, agrega un prompt al título de la tabla."""
+    mode = ui.filter_mode.value
+    if mode == 0:
+        return view
+    label = "cmd" if mode == 1 else "user"
+    text = ui.filter_value.get_obj().value
+    prompt = f"filtrar {label}: {text}_"
+    return replace(view, title=f"{view.title} | {prompt}")
+
+
 def _on_sigterm(signum, frame):
     """Handler de SIGTERM: solo levanta SystemExit para que la limpieza
     corra en el flujo normal (async-signal-safe: acá no se toca ningún objeto).
@@ -147,8 +158,13 @@ class Display:
                 snapshot = dict(self._snapshot)
 
                 view = VIEWS[self._ui.active_view.value]
-                table = _sorted_view(view(snapshot), self._ui.sort_mode.value)
+                mode = self._ui.filter_mode.value
+                text = self._ui.filter_value.get_obj().value
+                filter_cmd = text if mode == 1 else ""
+                filter_user = text if mode == 2 else ""
+                table = _sorted_view(view(snapshot, filter_cmd=filter_cmd, filter_user=filter_user), self._ui.sort_mode.value)
                 table = _apply_selection(table, self._ui, _page_size())
+                table = _inject_filter_prompt(table, self._ui)
                 self._render(table)
                 time.sleep(1)
         finally: #corre en systemExit

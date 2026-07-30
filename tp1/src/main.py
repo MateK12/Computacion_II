@@ -102,6 +102,11 @@ def _read_key(fd, timeout=1.0):
     return _ESCAPE_SEQUENCES.get(sequence)
 
 
+def _is_printable(char: str) -> bool:
+    """True si `char` es un único carácter imprimible ASCII."""
+    return len(char) == 1 and " " <= char <= "~"
+
+
 def run_key_listener(ui, fd):
     """Escucha una tecla (con timeout de 1s) y actualiza el estado de UI
     compartido. Devuelve False cuando el usuario pide salir con 'q'.
@@ -109,6 +114,23 @@ def run_key_listener(ui, fd):
     key = _read_key(fd)
     if key is None:
         return True
+
+    # ── modo input (filtro por comando o usuario) ──────────────────────────
+    if ui.filter_mode.value != 0:
+        if key == "enter":
+            ui.filter_mode.value = 0          # confirmar: mantener texto, volver a normal
+        elif key == "\x1b":                   # ESC — cancelar y limpiar
+            ui.filter_value.get_obj().value = ""
+            ui.filter_mode.value = 0
+        elif key == "\x7f":                   # Backspace
+            cur = ui.filter_value.get_obj().value
+            ui.filter_value.get_obj().value = cur[:-1]
+        elif _is_printable(key):
+            cur = ui.filter_value.get_obj().value
+            ui.filter_value.get_obj().value = cur + key
+        return True
+
+    # ── modo normal ────────────────────────────────────────────────────────
     if key == "q":
         return False
     elif key == "c":
@@ -136,6 +158,12 @@ def run_key_listener(ui, fd):
             # La selección se vuelve identidad: el PID que el display publicó
             # como "bajo el cursor" (tu opción C: estado puro, 1 frame de atraso).
             ui.pinned_pid.value = ui.pid_at_selected.value
+    elif key == "/":
+        ui.filter_mode.value = 1
+        ui.filter_value.get_obj().value = ""
+    elif key == "u":
+        ui.filter_mode.value = 2
+        ui.filter_value.get_obj().value = ""
     elif key in VIEW_KEYS:
         ui.active_view.value = VIEW_KEYS[key]
     return True
@@ -160,6 +188,8 @@ def main():
         pinned_pid=mp.Value("i", -1),
         pid_at_selected=mp.Value("i", -1),
         row_count=mp.Value("i", 0),
+        filter_mode=mp.Value("i", 0),
+        filter_value=mp.Array("u", 128)
     )
 
     procs = [

@@ -18,6 +18,8 @@ def _make_ui():
 		pinned_pid=mp.Value("i", -1),
 		pid_at_selected=mp.Value("i", -1),
 		row_count=mp.Value("i", 0),
+		filter_mode=mp.Value("i", 0),
+		filter_value=mp.Array("u", 128),
 	)
 
 

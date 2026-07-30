@@ -6,6 +6,7 @@ El proceso display hace `dict(snapshot)` una vez por frame y nos pasa esa copia;
 el renderer recibe el ViewTable y lo dibuja sin saber de qué vista vino.
 """
 
+import pwd
 import signal as _signal
 
 from .models import ViewTable
@@ -15,6 +16,48 @@ from .formatters import format_uptime, format_time_unix, format_kb, format_proc_
 # Dimensión vacía: lo que asumimos cuando un analizador todavía no publicó nada
 # (los primeros segundos de vida del monitor, o si ese analizador murió).
 _EMPTY_DIM = {"ts": None, "data": {}}
+
+
+def _filter_by_cmd(summary_data: dict, filter_cmd: str) -> dict:
+    """Devuelve solo los PIDs cuyo nombre de comando contiene `filter_cmd`
+    (case-insensitive). Si filter_cmd está vacío, devuelve todo sin tocar.
+    """
+    if not filter_cmd:
+        return summary_data
+    needle = filter_cmd.lower()
+    return {
+        pid: proc
+        for pid, proc in summary_data.items()
+        if needle in proc.get("name", "").lower()
+    }
+
+
+def _resolve_uid(text: str) -> int | None:
+    """Convierte un string en UID: si es número lo devuelve directo,
+    si es nombre busca con pwd.getpwnam. Si falla, devuelve None.
+    """
+    if text.isdigit():
+        return int(text)
+    try:
+        return pwd.getpwnam(text).pw_uid
+    except KeyError:
+        return None
+
+
+def _filter_by_user(summary_data: dict, filter_user: str) -> dict:
+    """Devuelve solo los PIDs cuyo UID coincide con `filter_user`.
+    Si filter_user está vacío, devuelve todo sin tocar.
+    """
+    if not filter_user:
+        return summary_data
+    target_uid = _resolve_uid(filter_user)
+    if target_uid is None:
+        return {}  # usuario inexistente → ningún match
+    return {
+        pid: proc
+        for pid, proc in summary_data.items()
+        if proc.get("uid") == target_uid
+    }
 # (clave en la dimensión memory, etiqueta para el encabezado) — todo en kB,
 # unidad nativa de /proc; los nombres Vm* son los de /proc/<pid>/status.
 # Los valores se formatean a unidades humanas (MB, GB) con format_kb.
@@ -37,7 +80,7 @@ _MEMORY_FAULT_COLUMNS = [
     ("majflt_delta", "MajFlt"),
 ]
 
-def view_summary(data: dict) -> ViewTable:
+def view_summary(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
     """Vista Resumen: una fila por proceso con estado, CPU%, RSS, threads y comando.
     La dimensión base es `summary`: un proceso sin entrada ahí no tiene fila.
     """
@@ -45,9 +88,11 @@ def view_summary(data: dict) -> ViewTable:
     cpu_data = data.get("cpu", _EMPTY_DIM)["data"]
     memory_data = data.get("memory", _EMPTY_DIM)["data"]
 
+    procs = _filter_by_cmd(summary["data"], filter_cmd)
+    procs = _filter_by_user(procs, filter_user)
     rows = []
-    for pid in sorted(summary["data"]):
-        proc = summary["data"][pid]
+    for pid in sorted(procs):
+        proc = procs[pid]
         mem = memory_data.get(pid)
         rss = format_kb(mem["vm_rss"]) if mem else None
         rows.append([
@@ -77,7 +122,7 @@ def _filter_none_procs(cols, procs):
     }
 
 
-def view_memory(data: dict) -> ViewTable:
+def view_memory(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
     """Vista Memoria: una fila por proceso con información de memoria: VM size, RSS, HWM, Data, Stack, Exe, Lib y Swap,
     más los page faults (minor/major) del último intervalo.
     La dimensión base es `memory`: un proceso sin entrada ahí no tiene fila. Los valores se formatean a unidades humanas.
@@ -88,12 +133,23 @@ def view_memory(data: dict) -> ViewTable:
     fault_keys = [key for key, _ in _MEMORY_FAULT_COLUMNS]
     labels = [label for _, label in _MEMORY_COLUMNS + _MEMORY_FAULT_COLUMNS]
 
+    summary_data = summary["data"]
+    allowed_pids = None
+    if filter_cmd:
+        summary_data = _filter_by_cmd(summary_data, filter_cmd)
+        allowed_pids = set(summary_data.keys())
+    if filter_user:
+        summary_data = _filter_by_user(summary_data, filter_user)
+        allowed_pids = set(summary_data.keys())
+
     # el filtro mira SOLO las vm_* (None estructural = kthread); los *_delta
     # en None son transitorios y la fila se muestra igual
     filtered_memory_data = _filter_none_procs(keys, memory_data["data"])
     rows = []
     for pid in sorted(filtered_memory_data):
-        proc = summary["data"].get(pid, None)
+        if allowed_pids is not None and pid not in allowed_pids:
+            continue
+        proc = summary_data.get(pid)
         mem = memory_data["data"].get(pid)
         rows.append([
             pid,
@@ -128,7 +184,7 @@ def _fmt_fd_sample(fds: dict) -> str:
     return ", ".join(f"{fd}:{fds[fd]['dest']}" for fd in sample)
 
 
-def view_fds(data: dict) -> ViewTable:
+def view_fds(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
     """Vista File Descriptors: una fila por proceso con el total de FDs abiertos,
     el conteo por tipo y una muestra de los FDs más bajos con sus destinos.
     La dimensión base es `fds`: un proceso sin entrada ahí no tiene fila.
@@ -138,9 +194,20 @@ def view_fds(data: dict) -> ViewTable:
     fds_data = data.get("fds", _EMPTY_DIM)
     labels = [label for _, label in _FD_TYPE_COLUMNS]
 
+    summary_data = summary["data"]
+    allowed_pids = None
+    if filter_cmd:
+        summary_data = _filter_by_cmd(summary_data, filter_cmd)
+        allowed_pids = set(summary_data.keys())
+    if filter_user:
+        summary_data = _filter_by_user(summary_data, filter_user)
+        allowed_pids = set(summary_data.keys())
+
     rows = []
     for pid in sorted(fds_data["data"]):
-        proc = summary["data"].get(pid)
+        if allowed_pids is not None and pid not in allowed_pids:
+            continue
+        proc = summary_data.get(pid)
         fds = fds_data["data"][pid]
         types = [fd["type"] for fd in fds.values()]
         counts = [types.count(key) for key, _ in _FD_TYPE_COLUMNS]
@@ -161,15 +228,27 @@ def view_fds(data: dict) -> ViewTable:
     )
 
 
-def view_threads(data: dict) -> ViewTable:
+def view_threads(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
     """Vista Threads: una fila por thread con información de estado, CPU%, y cambios de contexto.
     La dimensión base es `threads`: un thread sin entrada ahí no tiene fila.
     """
     summary = data.get("summary", _EMPTY_DIM)
     threads_data = data.get("threads", _EMPTY_DIM)
+
+    summary_data = summary["data"]
+    allowed_pids = None
+    if filter_cmd:
+        summary_data = _filter_by_cmd(summary_data, filter_cmd)
+        allowed_pids = set(summary_data.keys())
+    if filter_user:
+        summary_data = _filter_by_user(summary_data, filter_user)
+        allowed_pids = set(summary_data.keys())
+
     rows = []
     for pid in sorted(threads_data["data"]):
-        proc = summary["data"].get(pid, None)
+        if allowed_pids is not None and pid not in allowed_pids:
+            continue
+        proc = summary_data.get(pid)
         for tid, thread in sorted(threads_data["data"][pid].items()):
             rows.append([
                 pid,
@@ -202,7 +281,7 @@ _SCHEDULING_COLUMNS = [
 ]
 
 
-def view_scheduling(data: dict) -> ViewTable:
+def view_scheduling(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
     """Vista Scheduling: una fila por proceso con política, prioridades, afinidad
     y los porcentajes de CPU y de espera en runqueue del último intervalo.
     La dimensión base es `scheduling`: un proceso sin entrada ahí no tiene fila.
@@ -212,9 +291,20 @@ def view_scheduling(data: dict) -> ViewTable:
     keys = [key for key, _ in _SCHEDULING_COLUMNS]
     labels = [label for _, label in _SCHEDULING_COLUMNS]
 
+    summary_data = summary["data"]
+    allowed_pids = None
+    if filter_cmd:
+        summary_data = _filter_by_cmd(summary_data, filter_cmd)
+        allowed_pids = set(summary_data.keys())
+    if filter_user:
+        summary_data = _filter_by_user(summary_data, filter_user)
+        allowed_pids = set(summary_data.keys())
+
     rows = []
     for pid in sorted(sched_data["data"]):  
-        proc = summary["data"].get(pid)
+        if allowed_pids is not None and pid not in allowed_pids:
+            continue
+        proc = summary_data.get(pid)
         sched = sched_data["data"][pid]
         rows.append([
             pid,
@@ -246,7 +336,7 @@ def _fmt_pending(nums: list) -> str:
     return f"{len(nums)}: " + ",".join(_signal_name(n) for n in nums)
 
 
-def view_signals(data: dict) -> ViewTable:
+def view_signals(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
     """Vista Señales: una fila por proceso con el conteo de señales bloqueadas,
     ignoradas y capturadas, y las pendientes (conteo + cuáles).
     La dimensión base es `signals`: un proceso sin entrada ahí no tiene fila.
@@ -254,9 +344,20 @@ def view_signals(data: dict) -> ViewTable:
     summary = data.get("summary", _EMPTY_DIM)
     signals_data = data.get("signals", _EMPTY_DIM)
 
+    summary_data = summary["data"]
+    allowed_pids = None
+    if filter_cmd:
+        summary_data = _filter_by_cmd(summary_data, filter_cmd)
+        allowed_pids = set(summary_data.keys())
+    if filter_user:
+        summary_data = _filter_by_user(summary_data, filter_user)
+        allowed_pids = set(summary_data.keys())
+
     rows = []
     for pid in sorted(signals_data["data"]):  # orden estable entre frames
-        proc = summary["data"].get(pid)
+        if allowed_pids is not None and pid not in allowed_pids:
+            continue
+        proc = summary_data.get(pid)
         sig = signals_data["data"][pid]
         rows.append([
             pid,
@@ -276,11 +377,12 @@ def view_signals(data: dict) -> ViewTable:
     )
 
 
-def view_help(data: dict) -> ViewTable:
+def view_help(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
     """Vista Ayuda: los keybindings disponibles. Es contenido estático — recibe
     `data` solo para cumplir el contrato de firma de toda vista. Se extiende a
     mano con cada atajo nuevo que se implementa (no listar teclas pendientes).
     """
+    _ = filter_cmd, filter_user  # no aplican en esta vista
     return ViewTable(
         title="Ayuda",
         columns=["Tecla", "Acción"],
@@ -296,6 +398,8 @@ def view_help(data: dict) -> ViewTable:
             ["+ / -", "Ajustar intervalo de la vista activa (±0.5s)"],
             ["↑ / ↓", "Navegar por la lista de procesos"],
             ["Enter", "Pin / despin del proceso seleccionado"],
+            ["/", "Filtrar por comando"],
+            ["u", "Filtrar por usuario"],
             ["h / ?", "Esta ayuda"],
             ["q", "Salir"],
         ],
@@ -434,11 +538,12 @@ def _row_top_memoria(data: dict) -> list:
 	return row
 
 
-def view_sistema(data: dict) -> ViewTable:
+def view_sistema(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
 	"""Vista Sistema: métricas globales de la máquina en varias filas agrupadas por categoría.
 	Uptime, Load, Memoria, CPU, Procesos, Context Switches, Forks, Tops CPU y Memoria.
 	No filtra por proceso: solo datos globales de la dimensión 'sistema'.
 	"""
+	_ = filter_cmd, filter_user  # no aplican en esta vista
 	system_data = data.get("sistema", _EMPTY_DIM)
 	if not system_data["data"]:
 		# No hay datos aún: tabla vacía
