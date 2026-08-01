@@ -17,7 +17,7 @@ class MockProcFS:
 class TestCollector(unittest.TestCase):
     def test_ciclo_publica_pids(self):
         shared = []
-        col = Collector(MockProcFS([1, 2, 3]), shared, sleep_interval=1)
+        col = Collector(MockProcFS([1, 2, 3]), shared, None, sleep_interval=1)
 
         col._ciclo()
 
@@ -26,7 +26,7 @@ class TestCollector(unittest.TestCase):
     def test_ciclo_reemplaza_no_acumula(self):
         shared = []
         procfs = MockProcFS([1, 2, 3])
-        col = Collector(procfs, shared, sleep_interval=1)
+        col = Collector(procfs, shared, None, sleep_interval=1)
 
         col._ciclo()
         procfs.pids = [4, 5]   # cambió el estado del sistema entre ciclos
@@ -37,7 +37,7 @@ class TestCollector(unittest.TestCase):
     def test_ciclo_muta_el_mismo_objeto(self):
         # Testear que _ciclo() mute la misma referencia a memoria que utilizan los otros procesos
         shared = []
-        col = Collector(MockProcFS([7, 8]), shared, sleep_interval=1)
+        col = Collector(MockProcFS([7, 8]), shared, None, sleep_interval=1)
 
         col._ciclo()
 

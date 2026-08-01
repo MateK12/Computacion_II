@@ -34,7 +34,7 @@ def mock_status(**overrides):
 class TestAnalyzerSignals(unittest.TestCase):
 
     def _analyzer(self):
-        return AnalyzerSignals(MockProcFS({}), [], {}, 1)
+        return AnalyzerSignals(MockProcFS({}), [], {}, 1, None)
 
     def test_decode_mask_bit_conocido(self):
         """'0000000000000002' tiene solo el bit 1 -> señal 2 (SIGINT)."""

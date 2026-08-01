@@ -76,7 +76,7 @@ class TestScheduling(unittest.TestCase):
 
     def _analyzer(self, stats=None, schedstats=None, statuses=None, dead=None, pids=None):
         procfs = MockProcFS(stats or {}, schedstats or {}, statuses or {}, dead)
-        return AnalyzerScheduling(procfs, list(pids or []), {}, 1)
+        return AnalyzerScheduling(procfs, list(pids or []), {}, 1, None)
 
     def test_primera_vez_delta_none_pero_estaticos_presentes(self):
         """Sin previo: cpu_usage/runqueue_wait_pct None, pero nice/policy ya salen."""

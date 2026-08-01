@@ -15,8 +15,6 @@ from .vista import (
     view_help,
 )
 import shutil
-import signal
-import sys
 import time
 
 # Contrato del índice de vista activa: la posición N de esta lista es lo que
@@ -123,22 +121,16 @@ def _inject_filter_prompt(view: ViewTable, ui) -> ViewTable:
     return replace(view, title=f"{view.title} | {prompt}")
 
 
-def _on_sigterm(signum, frame):
-    """Handler de SIGTERM: solo levanta SystemExit para que la limpieza
-    corra en el flujo normal (async-signal-safe: acá no se toca ningún objeto).
-    """
-    sys.exit(0)
-
-
 class Display:
     """Clase que representa la interfaz de usuario del analizador. Se encarga de
     mostrar la información en pantalla y de recibir la entrada del usuario.
     """
 
-    def __init__(self, renderer: IRenderer, snapshot, ui):
+    def __init__(self, renderer: IRenderer, snapshot, ui, shutdown_event):
         self.renderer = renderer
         self._snapshot = snapshot  # copia plana del snapshot
         self._ui = ui  # UIState: main escribe las teclas, acá escribimos row_count y pid_at_selected
+        self.shutdown_event = shutdown_event
 
     def _start(self):
         self.renderer.start()
@@ -151,10 +143,9 @@ class Display:
 
     def run_display(self):
         """Método que se encarga de iniciar el renderer, renderizar la vista y detener el renderer."""
-        signal.signal(signal.SIGTERM, _on_sigterm)
         self._start()
         try:
-            while True:
+            while not self.shutdown_event.is_set():
                 snapshot = dict(self._snapshot)
 
                 view = VIEWS[self._ui.active_view.value]
@@ -166,6 +157,7 @@ class Display:
                 table = _apply_selection(table, self._ui, _page_size())
                 table = _inject_filter_prompt(table, self._ui)
                 self._render(table)
-                time.sleep(1)
-        finally: #corre en systemExit
+                if self.shutdown_event.wait(1):
+                    break
+        finally:
             self.stop()

@@ -4,11 +4,12 @@ from .pacing import sleep_interval
 
 
 class AnalyzerFileDescriptor:
-    def __init__(self, procfs, shared_pids, snapshot, interval):
+    def __init__(self, procfs, shared_pids, snapshot, interval, shutdown_event):
         self.procfs = procfs
         self.shared_pids = shared_pids     # proxy (Manager.list)
         self.snapshot = snapshot           # proxy (Manager.dict)
         self.interval = interval
+        self.shutdown_event = shutdown_event
 
     def _parse_fd_type(self, fd_dest: str) -> str:
         """Devuelve 'socket', 'pipe', 'anon_inode', 'file' o 'unknown' según el
@@ -43,4 +44,5 @@ class AnalyzerFileDescriptor:
         """Loop de vida del analizador: un ciclo cada `interval` segundos."""
         while True:
             self._ciclo()
-            sleep_interval(self.interval)
+            if sleep_interval(self.interval, self.shutdown_event):
+                break

@@ -110,7 +110,7 @@ class TestSystem(unittest.TestCase):
 
     def _analyzer(self, pids=None, snapshot=None, **mock_kwargs):
         procfs = MockProcFS(**mock_kwargs)
-        return AnalyzerSystem(procfs, list(pids or []), snapshot if snapshot is not None else {}, 1)
+        return AnalyzerSystem(procfs, list(pids or []), snapshot if snapshot is not None else {}, 1, None)
 
     def _data(self, analyzer):
         return analyzer.snapshot["sistema"]["data"]

@@ -50,7 +50,7 @@ class TestCPU(unittest.TestCase):
         patcher.start()
 
     def _analyzer(self, stats=None, dead=None, pids=None):
-        a = AnalyzerCPU(MockProcFS(stats or {}, dead), list(pids or []), {}, 1)
+        a = AnalyzerCPU(MockProcFS(stats or {}, dead), list(pids or []), {}, 1, None)
         a._clk_tck = 100  # fijo -> tests independientes del SC_CLK_TCK de la máquina
         return a
 

@@ -64,7 +64,7 @@ def status_kernel_thread():
 class TestAnalyzerMemory(unittest.TestCase):
 
     def _analyzer(self):
-        return AnalyzerMemory(MockProcFS({}), [], {}, 1)
+        return AnalyzerMemory(MockProcFS({}), [], {}, 1, None)
 
     def test_extract_mapea_los_campos_vm(self):
         """_extract devuelve los 8 campos vm_* desde el status crudo de un proceso normal."""

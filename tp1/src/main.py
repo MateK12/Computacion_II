@@ -1,9 +1,17 @@
+import json
 import select
 import multiprocessing as mp
+import signal
+import sys
+import termios
+import time
+import tty
+import os
 
 from src.procfs import ProcFS
 from src.collector import Collector
 from src.ui_state import UIState
+from src.senales import setup_signal_handlers, block_signals_in_child, read_signal
 from src.analizadores.summary import AnalyzerSummary
 from src.analizadores.cpu import AnalyzerCPU
 from src.analizadores.threads import AnalyzerThreads
@@ -12,10 +20,6 @@ from src.analizadores.senales import AnalyzerSignals
 from src.analizadores.fds import AnalyzerFileDescriptor
 from src.analizadores.scheduling import AnalyzerScheduling
 from src.analizadores.sistema import AnalyzerSystem
-import sys
-import termios
-import tty
-import os
 
 # (clase, intervalo default, intervalo mínimo) según la tabla de la consigna.
 # CPU no tiene vista propia: acompaña a Resumen, mismo default/mínimo que Summary.
@@ -53,21 +57,24 @@ VIEW_ANALYZERS = {
 INTERVAL_STEP = 0.5
 INTERVAL_MAX = 60.0
 
-def run_collector(procfs, shared_pids):
-    Collector(procfs, shared_pids, sleep_interval=2).collect()
+def run_collector(procfs, shared_pids, shutdown_event):
+    block_signals_in_child()
+    Collector(procfs, shared_pids, shutdown_event, sleep_interval=2).collect()
 
-def run_analyzer(cls, procfs, shared_pids, snapshot, interval):
+def run_analyzer(cls, procfs, shared_pids, snapshot, interval, shutdown_event):
     """Crea y ejecuta un analizador de la clase `cls`."""
-    analyzer = cls(procfs, shared_pids, snapshot, interval)
+    block_signals_in_child()
+    analyzer = cls(procfs, shared_pids, snapshot, interval, shutdown_event)
     analyzer.analyze()
 
-def run_display(snapshot, ui):
+def run_display(snapshot, ui, shutdown_event):
     """Crea y ejecuta el display."""
+    block_signals_in_child()
     from src.display.display import Display
     from src.display.rich_renderer import RichRenderer
 
     renderer = RichRenderer()
-    display = Display(renderer, snapshot, ui)
+    display = Display(renderer, snapshot, ui, shutdown_event)
     display.run_display()
 
 # --- orquestador -------------------------------------------------------------
@@ -87,6 +94,8 @@ def _read_key(fd, timeout=1.0):
     if not ready:
         return None
     byte = os.read(fd, 1)
+    if not byte:
+        return None  # EOF
     if byte in (b"\r", b"\n"):
         return "enter"
     if byte != b"\x1b":
@@ -168,6 +177,28 @@ def run_key_listener(ui, fd):
         ui.active_view.value = VIEW_KEYS[key]
     return True
 
+def _dump_snapshot(snapshot):
+    """Persiste el snapshot actual a un JSON con timestamp."""
+    timestamp = int(time.time())
+    filename = f"dump_{timestamp}.json"
+    with open(filename, "w") as f:
+        json.dump(dict(snapshot), f, default=str, indent=2)
+    return filename
+
+
+def _reload_config(ui, path="config.json"):
+    """Intenta recargar intervalos desde `path` (default: config.json)."""
+    try:
+        with open(path) as f:
+            cfg = json.load(f)
+        for i, (cls, default, minimum) in enumerate(ANALYZER_SPECS):
+            key = cls.__name__
+            if key in cfg:
+                ui.intervals[i].value = max(minimum, float(cfg[key]))
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        pass
+
+
 def main():
     mp.set_start_method("fork")
 
@@ -176,7 +207,14 @@ def main():
     manager = mp.Manager()
     snapshot = manager.dict()
     shared_pids = manager.list()
-    
+    shutdown_event = mp.Event()
+
+    # Self-pipe: los handlers de señal solo escriben un byte; main lee y decide.
+    pipe_r, pipe_w = os.pipe()
+    os.set_inheritable(pipe_r, False)
+    os.set_inheritable(pipe_w, False)
+    setup_signal_handlers(pipe_w)
+
     # Todo el estado de UI compartido, creado ANTES del fork. Un escritor por
     # campo (ver ui_state.py); los intervalos son un Value('d') por analizador
     # que cada uno relee en su sleep de a ticks (pacing.py).
@@ -189,16 +227,17 @@ def main():
         pid_at_selected=mp.Value("i", -1),
         row_count=mp.Value("i", 0),
         filter_mode=mp.Value("i", 0),
-        filter_value=mp.Array("u", 128)
+        filter_value=mp.Array("u", 128),
+        verbose_mode=mp.Value("i", 0),
     )
 
     procs = [
-        mp.Process(target=run_display, args=(snapshot, ui), name="display"),
-        mp.Process(target=run_collector, args=(procfs, shared_pids), name="collector"),
+        mp.Process(target=run_display, args=(snapshot, ui, shutdown_event), name="display"),
+        mp.Process(target=run_collector, args=(procfs, shared_pids, shutdown_event), name="collector"),
         *[
             mp.Process(
                 target=run_analyzer,
-                args=(cls, procfs, shared_pids, snapshot, interval),
+                args=(cls, procfs, shared_pids, snapshot, interval, shutdown_event),
                 name=cls.__name__,
             )
             for (cls, _, _), interval in zip(ANALYZER_SPECS, ui.intervals)
@@ -207,24 +246,53 @@ def main():
     for p in procs:
         p.start()
 
-
-    try: #TO do quitar cuando se implemente el shutdown de los analizadores y del collector
-        fd = sys.stdin.fileno() 
-
+    fd = sys.stdin.fileno()
+    try:
         estado_original = termios.tcgetattr(fd)
         tty.setcbreak(fd)
-        running = True
-        while running:
-            running = run_key_listener(ui, fd)
-    except KeyboardInterrupt:
-        print("\nbajando...")
-    finally:
-        for p in procs:
-            p.terminate()
-        for p in procs:
-            p.join()
-        termios.tcsetattr(fd, termios.TCSADRAIN, estado_original)
+        has_tty = True
+    except termios.error:
+        # stdin no es un tty (ej. pipe, Docker sin tty): seguimos sin modo raw.
+        estado_original = None
+        has_tty = False
 
+    running = True
+    try:
+        while running:
+            fds = [pipe_r]
+            if has_tty:
+                fds.append(fd)
+            ready, _, _ = select.select(fds, [], [], 1.0)
+
+            if pipe_r in ready:
+                sig = read_signal(pipe_r)
+                if sig in (signal.SIGINT, signal.SIGTERM):
+                    running = False
+                elif sig == signal.SIGHUP:
+                    _reload_config(ui)
+                elif sig == signal.SIGUSR1:
+                    try:
+                        _dump_snapshot(snapshot)
+                    except Exception:
+                        pass
+                elif sig == signal.SIGUSR2:
+                    ui.verbose_mode.value = 1 - ui.verbose_mode.value
+
+            if has_tty and fd in ready:
+                running = run_key_listener(ui, fd)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        shutdown_event.set()
+        for p in procs:
+            p.join(timeout=5)
+            if p.is_alive():
+                p.terminate()
+                p.join()
+        if estado_original is not None:
+            termios.tcsetattr(fd, termios.TCSADRAIN, estado_original)
+        os.close(pipe_r)
+        os.close(pipe_w)
 
 
 if __name__ == "__main__":

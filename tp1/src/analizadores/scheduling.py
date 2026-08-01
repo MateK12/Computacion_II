@@ -3,11 +3,12 @@ import time
 from .pacing import sleep_interval
 
 class AnalyzerScheduling:
-    def __init__(self, procfs, shared_pids, snapshot, interval):
+    def __init__(self, procfs, shared_pids, snapshot, interval, shutdown_event):
         self.procfs = procfs
         self.shared_pids = shared_pids     # proxy (Manager.list)
         self.snapshot = snapshot           # proxy (Manager.dict)
         self.interval = interval
+        self.shutdown_event = shutdown_event
         self._prev = {}
 
 
@@ -66,7 +67,8 @@ class AnalyzerScheduling:
         """Loop de vida del analizador: un ciclo cada `interval` segundos."""
         while True:
             self._ciclo()
-            sleep_interval(self.interval)
+            if sleep_interval(self.interval, self.shutdown_event):
+                break
             
     def _rebuild_prev(self,status,sched_stat):
         """Reconstruye el diccionario previo a partir del snapshot actual."""

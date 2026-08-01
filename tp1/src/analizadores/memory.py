@@ -7,11 +7,12 @@ class AnalyzerMemory:
     # Contadores acumulados de /proc/<pid>/stat que se publican como delta por intervalo.
     FAULT_FIELDS = ("minflt", "cminflt", "majflt", "cmajflt")
 
-    def __init__(self, procfs, shared_pids, snapshot, interval):
+    def __init__(self, procfs, shared_pids, snapshot, interval, shutdown_event):
         self.procfs = procfs
         self.shared_pids = shared_pids     # proxy (Manager.list)
         self.snapshot = snapshot           # proxy (Manager.dict)
         self.interval = interval
+        self.shutdown_event = shutdown_event
         self._prev = {}                    # {pid: faults acumulados + starttime del ciclo anterior}
 
     def _parse_kb(self, status, key):
@@ -78,4 +79,5 @@ class AnalyzerMemory:
         """Loop de vida del analizador: un ciclo cada `interval` segundos."""
         while True:
             self._ciclo()
-            sleep_interval(self.interval)
+            if sleep_interval(self.interval, self.shutdown_event):
+                break

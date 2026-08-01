@@ -38,7 +38,7 @@ class TestFDs(unittest.TestCase):
 
     def _analyzer(self, fds_por_pid=None, dead=None):
         return AnalyzerFileDescriptor(
-            MockProcFS(fds_por_pid or {}, dead), [], {}, 1
+            MockProcFS(fds_por_pid or {}, dead), [], {}, 1, None
         )
 
     def test_lists_open_fds(self):

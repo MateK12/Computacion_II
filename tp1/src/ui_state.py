@@ -23,3 +23,4 @@ class UIState:
     row_count: object        # Value('i') — escribe DISPLAY: filas de la tabla actual
     filter_mode: object        # Value('i') — escribe main: modo de filtro (0 = comando 1= usuario)
     filter_value: object       # Array('u',128) — escribe main: valor del filtro (comando o usuario)
+    verbose_mode: object       # Value('i') — escribe main: 0=normal, 1=verbose (toggle con SIGUSR2)

@@ -10,14 +10,21 @@ analizador dormido también tiene que enterarse rápido de que hay que parar.)
 import time
 
 
-def sleep_interval(interval, tick=1.0):
+def sleep_interval(interval, shutdown_event=None, tick=1.0):
 	"""Duerme `interval.value` segundos, releyendo el Value cada `tick` como
-	máximo. El objetivo puede cambiar bajo nuestros pies: se compara el tiempo
-	ya dormido contra el valor ACTUAL, así achicar el intervalo despierta antes.
+	máximo. Si `shutdown_event` se setea, despierta inmediatamente.
+
+	Retorna `True` si el evento de shutdown fue señalizado, `False` si el
+	tiempo de intervalo se agotó normalmente.
 	"""
 	start = time.monotonic()
 	while True:
 		remaining = interval.value - (time.monotonic() - start)
 		if remaining <= 0:
-			return
-		time.sleep(min(remaining, tick))
+			return False
+		wait_time = min(remaining, tick)
+		if shutdown_event is not None:
+			if shutdown_event.wait(wait_time):
+				return True
+		else:
+			time.sleep(wait_time)

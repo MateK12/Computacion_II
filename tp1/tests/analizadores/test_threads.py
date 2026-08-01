@@ -70,6 +70,7 @@ class TestThreads(unittest.TestCase):
             list(pids or []),
             {},
             1,
+            None,
         )
         a._clk_tck = 100  # fijo -> independiente del SC_CLK_TCK real
         return a

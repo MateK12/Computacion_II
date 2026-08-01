@@ -13,11 +13,12 @@ class AnalyzerSystem:
 
     CPU_PCT_FIELDS = tuple(f"cpu_{field}_pct" for field in ProcFS.CPU_FIELDS)
 
-    def __init__(self, procfs, shared_pids, snapshot, interval):
+    def __init__(self, procfs, shared_pids, snapshot, interval, shutdown_event):
         self.procfs = procfs
         self.shared_pids = shared_pids     # proxy (Manager.list)
         self.snapshot = snapshot           # proxy (Manager.dict)
         self.interval = interval
+        self.shutdown_event = shutdown_event
         # Lectura anterior de /proc/stat, cruda, más su estampa MONOTÓNICA.
         # No es por-PID: es una sola. No hace falta _guard como en cpu/scheduling
         # porque /proc/stat no se recicla (si el sistema rebootea, morimos con él).
@@ -163,4 +164,5 @@ class AnalyzerSystem:
         """Loop de vida del analizador: un ciclo cada `interval` segundos."""
         while True:
             self._ciclo()
-            sleep_interval(self.interval)
+            if sleep_interval(self.interval, self.shutdown_event):
+                break

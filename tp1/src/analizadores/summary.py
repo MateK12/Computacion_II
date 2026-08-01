@@ -5,11 +5,12 @@ from src.procfs import ProcFS
 
 
 class AnalyzerSummary:
-    def __init__(self, procfs: ProcFS, shared_pids, snapshot, interval: int):
+    def __init__(self, procfs: ProcFS, shared_pids, snapshot, interval: int, shutdown_event):
         self.procfs = procfs
         self.shared_pids = shared_pids
         self.snapshot = snapshot
         self.interval = interval
+        self.shutdown_event = shutdown_event
 
     def _extract(self, status: dict) -> dict:
         """Arma la entrada de resumen de un proceso a partir de su status crudo."""
@@ -37,4 +38,5 @@ class AnalyzerSummary:
         """Loop de vida del analizador: un ciclo cada `interval` segundos."""
         while True:
             self._ciclo()
-            sleep_interval(self.interval)
+            if sleep_interval(self.interval, self.shutdown_event):
+                break

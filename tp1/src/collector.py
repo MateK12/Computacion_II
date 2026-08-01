@@ -1,10 +1,8 @@
-import time
-
-
 class Collector:
-    def __init__(self, procfs, shared_pids, sleep_interval):   
+    def __init__(self, procfs, shared_pids, shutdown_event, sleep_interval):
         self.procfs = procfs
         self.shared_pids = shared_pids     # proxy (Manager.list)
+        self.shutdown_event = shutdown_event
         self.sleep_interval = sleep_interval
 
     def _ciclo(self):
@@ -15,6 +13,6 @@ class Collector:
 
     def collect(self):
         """Loop de vida del recolector: un ciclo cada sleep_interval segundos."""
-        while True:
+        while not self.shutdown_event.is_set():
             self._ciclo()
-            time.sleep(self.sleep_interval)
+            self.shutdown_event.wait(self.sleep_interval)

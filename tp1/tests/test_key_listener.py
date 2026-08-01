@@ -20,6 +20,7 @@ def _make_ui():
 		row_count=mp.Value("i", 0),
 		filter_mode=mp.Value("i", 0),
 		filter_value=mp.Array("u", 128),
+		verbose_mode=mp.Value("i", 0),
 	)
 
 
