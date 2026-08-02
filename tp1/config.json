@@ -1,0 +1,10 @@
+{
+  "AnalyzerSummary": 2.0,
+  "AnalyzerCPU": 2.0,
+  "AnalyzerThreads": 2.0,
+  "AnalyzerMemory": 3.0,
+  "AnalyzerSignals": 10.0,
+  "AnalyzerFileDescriptor": 5.0,
+  "AnalyzerScheduling": 10.0,
+  "AnalyzerSystem": 2.0
+}
