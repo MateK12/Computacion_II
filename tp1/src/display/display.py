@@ -121,6 +121,13 @@ def _inject_filter_prompt(view: ViewTable, ui) -> ViewTable:
     return replace(view, title=f"{view.title} | {prompt}")
 
 
+def _inject_verbose_indicator(view: ViewTable, ui) -> ViewTable:
+    """Si el modo verbose está activo, agrega un indicador [V] al título."""
+    if ui.verbose_mode.value:
+        return replace(view, title=f"{view.title} [V]")
+    return view
+
+
 class Display:
     """Clase que representa la interfaz de usuario del analizador. Se encarga de
     mostrar la información en pantalla y de recibir la entrada del usuario.
@@ -153,9 +160,11 @@ class Display:
                 text = self._ui.filter_value.get_obj().value
                 filter_cmd = text if mode == 1 else ""
                 filter_user = text if mode == 2 else ""
-                table = _sorted_view(view(snapshot, filter_cmd=filter_cmd, filter_user=filter_user), self._ui.sort_mode.value)
+                verbose = self._ui.verbose_mode.value == 1
+                table = _sorted_view(view(snapshot, filter_cmd=filter_cmd, filter_user=filter_user, verbose=verbose), self._ui.sort_mode.value)
                 table = _apply_selection(table, self._ui, _page_size())
                 table = _inject_filter_prompt(table, self._ui)
+                table = _inject_verbose_indicator(table, self._ui)
                 self._render(table)
                 if self.shutdown_event.wait(1):
                     break

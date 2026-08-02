@@ -79,8 +79,13 @@ _MEMORY_FAULT_COLUMNS = [
     ("minflt_delta", "MinFlt"),
     ("majflt_delta", "MajFlt"),
 ]
+# En modo verbose mostramos también los deltas de los hijos (campos con prefijo 'c').
+_MEMORY_VERBOSE_COLUMNS = [
+    ("cminflt_delta", "CMinFlt"),
+    ("cmajflt_delta", "CMajFlt"),
+]
 
-def view_summary(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
+def view_summary(data: dict, filter_cmd: str = "", filter_user: str = "", verbose: bool = False) -> ViewTable:
     """Vista Resumen: una fila por proceso con estado, CPU%, RSS, threads y comando.
     La dimensión base es `summary`: un proceso sin entrada ahí no tiene fila.
     """
@@ -95,18 +100,31 @@ def view_summary(data: dict, filter_cmd: str = "", filter_user: str = "") -> Vie
         proc = procs[pid]
         mem = memory_data.get(pid)
         rss = format_kb(mem["vm_rss"]) if mem else None
-        rows.append([
-            pid,
-            proc["state"],
-            cpu_data.get(pid),
-            rss,
-            proc["threads"],
-            proc["name"],
-        ])
+        if verbose:
+            rows.append([
+                pid,
+                proc["ppid"],
+                proc["state"],
+                cpu_data.get(pid),
+                rss,
+                proc["threads"],
+                proc["uid"],
+                proc["name"],
+            ])
+        else:
+            rows.append([
+                pid,
+                proc["state"],
+                cpu_data.get(pid),
+                rss,
+                proc["threads"],
+                proc["name"],
+            ])
 
+    columns = ["PID", "PPID", "Estado", "CPU%", "RSS", "Threads", "UID", "Comando"] if verbose else ["PID", "Estado", "CPU%", "RSS", "Threads", "Comando"]
     return ViewTable(
         title="Resumen",
-        columns=["PID", "Estado", "CPU%", "RSS", "Threads", "Comando"],
+        columns=columns,
         rows=rows,
         ts=summary["ts"],
     )
@@ -122,16 +140,17 @@ def _filter_none_procs(cols, procs):
     }
 
 
-def view_memory(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
+def view_memory(data: dict, filter_cmd: str = "", filter_user: str = "", verbose: bool = False) -> ViewTable:
     """Vista Memoria: una fila por proceso con información de memoria: VM size, RSS, HWM, Data, Stack, Exe, Lib y Swap,
     más los page faults (minor/major) del último intervalo.
     La dimensión base es `memory`: un proceso sin entrada ahí no tiene fila. Los valores se formatean a unidades humanas.
     """
     summary = data.get("summary", _EMPTY_DIM)
     memory_data = data.get("memory", _EMPTY_DIM)
+    extra_cols = _MEMORY_VERBOSE_COLUMNS if verbose else []
     keys = [key for key, _ in _MEMORY_COLUMNS]
-    fault_keys = [key for key, _ in _MEMORY_FAULT_COLUMNS]
-    labels = [label for _, label in _MEMORY_COLUMNS + _MEMORY_FAULT_COLUMNS]
+    fault_keys = [key for key, _ in _MEMORY_FAULT_COLUMNS + extra_cols]
+    labels = [label for _, label in _MEMORY_COLUMNS + _MEMORY_FAULT_COLUMNS + extra_cols]
 
     summary_data = summary["data"]
     allowed_pids = None
@@ -177,14 +196,17 @@ _FD_TYPE_COLUMNS = [
 _FD_SAMPLE_SIZE = 2
 
 
-def _fmt_fd_sample(fds: dict) -> str:
+def _fmt_fd_sample(fds: dict, verbose: bool = False) -> str:
     """Muestra de los FDs más bajos con su destino: '0:/dev/pts/1, 1:pipe:[123]'.
-    Sin FDs -> '' (kthreads y procesos ajenos sin permiso de lectura)."""
-    sample = sorted(fds)[:_FD_SAMPLE_SIZE]
+    En modo verbose muestra todos. Sin FDs -> '' (kthreads y procesos ajenos sin permiso de lectura)."""
+    if verbose:
+        sample = sorted(fds)
+    else:
+        sample = sorted(fds)[:_FD_SAMPLE_SIZE]
     return ", ".join(f"{fd}:{fds[fd]['dest']}" for fd in sample)
 
 
-def view_fds(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
+def view_fds(data: dict, filter_cmd: str = "", filter_user: str = "", verbose: bool = False) -> ViewTable:
     """Vista File Descriptors: una fila por proceso con el total de FDs abiertos,
     el conteo por tipo y una muestra de los FDs más bajos con sus destinos.
     La dimensión base es `fds`: un proceso sin entrada ahí no tiene fila.
@@ -216,7 +238,7 @@ def view_fds(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTab
             len(fds),
             *counts,
             len(fds) - sum(counts),   # Otros: lo que el analizador marcó unknown
-            _fmt_fd_sample(fds),
+            _fmt_fd_sample(fds, verbose),
             proc["name"] if proc else None,
         ])
 
@@ -228,7 +250,7 @@ def view_fds(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTab
     )
 
 
-def view_threads(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
+def view_threads(data: dict, filter_cmd: str = "", filter_user: str = "", verbose: bool = False) -> ViewTable:
     """Vista Threads: una fila por thread con información de estado, CPU%, y cambios de contexto.
     La dimensión base es `threads`: un thread sin entrada ahí no tiene fila.
     """
@@ -281,7 +303,7 @@ _SCHEDULING_COLUMNS = [
 ]
 
 
-def view_scheduling(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
+def view_scheduling(data: dict, filter_cmd: str = "", filter_user: str = "", verbose: bool = False) -> ViewTable:
     """Vista Scheduling: una fila por proceso con política, prioridades, afinidad
     y los porcentajes de CPU y de espera en runqueue del último intervalo.
     La dimensión base es `scheduling`: un proceso sin entrada ahí no tiene fila.
@@ -336,7 +358,14 @@ def _fmt_pending(nums: list) -> str:
     return f"{len(nums)}: " + ",".join(_signal_name(n) for n in nums)
 
 
-def view_signals(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
+def _fmt_signal_list(nums: list) -> str:
+    """Igual que _fmt_pending pero para listas que en verbose reemplazan al conteo."""
+    if not nums:
+        return "0"
+    return f"{len(nums)}: " + ",".join(_signal_name(n) for n in nums)
+
+
+def view_signals(data: dict, filter_cmd: str = "", filter_user: str = "", verbose: bool = False) -> ViewTable:
     """Vista Señales: una fila por proceso con el conteo de señales bloqueadas,
     ignoradas y capturadas, y las pendientes (conteo + cuáles).
     La dimensión base es `signals`: un proceso sin entrada ahí no tiene fila.
@@ -359,15 +388,26 @@ def view_signals(data: dict, filter_cmd: str = "", filter_user: str = "") -> Vie
             continue
         proc = summary_data.get(pid)
         sig = signals_data["data"][pid]
-        rows.append([
-            pid,
-            len(sig["blocked"]),
-            len(sig["ignored"]),
-            len(sig["caught"]),
-            _fmt_pending(sig["pending_thread"]),
-            _fmt_pending(sig["pending_shared"]),
-            proc["name"] if proc else None,
-        ])
+        if verbose:
+            rows.append([
+                pid,
+                _fmt_signal_list(sig["blocked"]),
+                _fmt_signal_list(sig["ignored"]),
+                _fmt_signal_list(sig["caught"]),
+                _fmt_pending(sig["pending_thread"]),
+                _fmt_pending(sig["pending_shared"]),
+                proc["name"] if proc else None,
+            ])
+        else:
+            rows.append([
+                pid,
+                len(sig["blocked"]),
+                len(sig["ignored"]),
+                len(sig["caught"]),
+                _fmt_pending(sig["pending_thread"]),
+                _fmt_pending(sig["pending_shared"]),
+                proc["name"] if proc else None,
+            ])
 
     return ViewTable(
         title="Señales",
@@ -377,12 +417,12 @@ def view_signals(data: dict, filter_cmd: str = "", filter_user: str = "") -> Vie
     )
 
 
-def view_help(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
+def view_help(data: dict, filter_cmd: str = "", filter_user: str = "", verbose: bool = False) -> ViewTable:
     """Vista Ayuda: los keybindings disponibles. Es contenido estático — recibe
     `data` solo para cumplir el contrato de firma de toda vista. Se extiende a
     mano con cada atajo nuevo que se implementa (no listar teclas pendientes).
     """
-    _ = filter_cmd, filter_user  # no aplican en esta vista
+    _ = filter_cmd, filter_user, verbose  # no aplican en esta vista
     return ViewTable(
         title="Ayuda",
         columns=["Tecla", "Acción"],
@@ -402,6 +442,7 @@ def view_help(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTa
             ["u", "Filtrar por usuario"],
             ["h / ?", "Esta ayuda"],
             ["q", "Salir"],
+            ["SIGUSR2", "Toggle modo verbose"],
         ],
         ts=None,
     )
@@ -538,12 +579,12 @@ def _row_top_memoria(data: dict) -> list:
 	return row
 
 
-def view_sistema(data: dict, filter_cmd: str = "", filter_user: str = "") -> ViewTable:
+def view_sistema(data: dict, filter_cmd: str = "", filter_user: str = "", verbose: bool = False) -> ViewTable:
 	"""Vista Sistema: métricas globales de la máquina en varias filas agrupadas por categoría.
 	Uptime, Load, Memoria, CPU, Procesos, Context Switches, Forks, Tops CPU y Memoria.
 	No filtra por proceso: solo datos globales de la dimensión 'sistema'.
 	"""
-	_ = filter_cmd, filter_user  # no aplican en esta vista
+	_ = filter_cmd, filter_user, verbose  # no aplican en esta vista
 	system_data = data.get("sistema", _EMPTY_DIM)
 	if not system_data["data"]:
 		# No hay datos aún: tabla vacía
