@@ -189,9 +189,17 @@ python3 -m src.main
 
 ### Con Docker
 
+La aplicación es **interactiva** (recibe teclas en tiempo real). Por eso hay que usar `docker compose run`, que conecta el stdin del host al contenedor. `docker compose up` no pasa el teclado.
+
 ```bash
 cd Computacion_II/tp1
-docker compose up --build
+docker compose run --rm monitor
+```
+
+Si querés forzar el rebuild antes de arrancar:
+
+```bash
+docker compose run --rm --build monitor
 ```
 
 > El contenedor necesita `tty: true`, `stdin_open: true` y `pid: host` para que la TUI reciba teclas y pueda ver los procesos del host.
