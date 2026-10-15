@@ -39,7 +39,7 @@ Este calendario está estructurado en 3 fases semanales (Sprints), dejando los �
 |---|---|---|---|---|
 | **Día 1** | Mar 13/10 | **Kickoff y Lectura Crítica**: Leer consigna en detalle, configurar entorno virtual (`venv`), `requirements.txt` básico (`fastapi`, `uvicorn`, `httpx`, `pydantic`). | 1h | [x] |
 | **Día 2** | Mié 14/10 | **Modelos de Dominio**: Diseñar schemas Pydantic (`TareaCreate`, `TareaResponse`, enum `EstadoTarea`) y estructura en memoria de tareas (`dict` con metadatos). Discutir por qué no hace falta lock monohilo. | 1h | [x] |
-| **Día 3** | Jue 15/10 | **API FastAPI (Esqueleto)**: Implementar endpoints `POST /tareas`, `GET /tareas`, `GET /tareas/{id}` y `GET /estadisticas`. Asegurar que `POST` responda **inmediatamente** con estado `pendiente`. | 1.5h | [ ] |
+| **Día 3** | Jue 15/10 | **API FastAPI (Esqueleto)**: Implementar endpoints `POST /tareas`, `GET /tareas`, `GET /tareas/{id}` y `GET /estadisticas`. Asegurar que `POST` responda **inmediatamente** con estado `pendiente`. | 1.5h | [x] |
 | **Día 4** | Vie 16/10 | **Cola y Worker Pool**: Crear `asyncio.Queue` y función corrutina `worker()`. Discutir diferencia entre `queue.Queue` y `asyncio.Queue`. Lanzar N workers en background. | 1.5h | [ ] |
 | **Día 5** | Sáb 17/10 | **Lifespan de FastAPI**: Integrar el ciclo de vida de los workers al startup/shutdown de FastAPI usando `@asynccontextmanager`. Probar tareas dummy encolándose y procesándose. | 1h | [ ] |
 | **Día 6** | Dom 18/10 | **Pruebas de Esqueleto y Descanso**: Verificar flujo completo API -> Cola -> Worker dummy -> Estado `completada`. Anotar dudas en `dudas.md`. | 1h | [ ] |
