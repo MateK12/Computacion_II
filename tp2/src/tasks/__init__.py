@@ -1,5 +1,6 @@
 from src.models import TipoTarea
 from src.tasks.base import TareaStrategy
+from src.tasks.descargar import DescargarStrategy
 
 REGISTRO_ESTRATEGIAS: dict[TipoTarea, TareaStrategy] = {}
 
@@ -17,3 +18,7 @@ def obtener_estrategia(tipo: TipoTarea) -> TareaStrategy:
             f"No hay ninguna estrategia registrada para el tipo '{tipo}'"
         )
     return estrategia
+
+
+# Registro de estrategias por defecto
+registrar_estrategia(TipoTarea.DESCARGAR, DescargarStrategy())

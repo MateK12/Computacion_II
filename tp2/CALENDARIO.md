@@ -42,8 +42,8 @@ Este calendario está estructurado en 3 fases semanales (Sprints), dejando los �
 | **Día 3** | Jue 15/10 | **API FastAPI (Esqueleto)**: Implementar endpoints `POST /tareas`, `GET /tareas`, `GET /tareas/{id}` y `GET /estadisticas`. Asegurar que `POST` responda **inmediatamente** con estado `pendiente`. | 1.5h | [x] |
 | **Día 4** | Vie 16/10 | **Cola y Worker Pool**: Crear `asyncio.Queue` y función corrutina `worker()`. Discutir diferencia entre `queue.Queue` y `asyncio.Queue`. Lanzar N workers en background. | 1.5h | [x] |
 | **Día 5** | Sáb 17/10 | **Lifespan de FastAPI**: Integrar el ciclo de vida de los workers al startup/shutdown de FastAPI usando `@asynccontextmanager`. Probar tareas dummy encolándose y procesándose. | 1h | [x] |
-| **Día 6** | Dom 18/10 | **Pruebas de Esqueleto y Descanso**: Verificar flujo completo API -> Cola -> Worker dummy -> Estado `completada`. Anotar dudas en `dudas.md`. | 1h | [ ] |
-| **Día 7** | Lun 19/10 - Mar 20/10 | **Checkpoint Semana 1**: Revisión de código, modularización en `src/` (`main.py`, `models.py`, `pool.py`, `manager.py`). | 1h | [ ] |
+| **Día 6** | Dom 18/10 | **Pruebas de Esqueleto y Descanso**: Verificar flujo completo API -> Cola -> Worker dummy -> Estado `completada`. Anotar dudas en `dudas.md`. | 1h | [x] |
+| **Día 7** | Lun 19/10 - Mar 20/10 | **Checkpoint Semana 1**: Revisión de código, modularización en `src/` (`main.py`, `models.py`, `pool.py`, `manager.py`). | 1h | [x] |
 
 ---
 
@@ -53,7 +53,7 @@ Este calendario está estructurado en 3 fases semanales (Sprints), dejando los �
 
 | Día | Fecha | Tarea / Actividad | Duración Estimada | Estado |
 |---|---|---|---|---|
-| **Día 8** | Mié 21/10 | **Tarea `descargar` (I/O-bound)**: Implementar descarga de lista de URLs concurrentemente con `httpx.AsyncClient` y `asyncio.gather`. Medir que el tiempo sea el del request más lento y no la suma. | 1.5h | [ ] |
+| **Día 8** | Mié 21/10 | **Tarea `descargar` (I/O-bound)**: Implementar descarga de lista de URLs concurrentemente con `httpx.AsyncClient` y `asyncio.gather`. Medir que el tiempo sea el del request más lento y no la suma. | 1.5h | [x] |
 | **Día 9** | Jue 22/10 | **Tarea `esperar`**: Implementar tarea que duerme $N$ segundos con `await asyncio.sleep()`. Servirá como banco de pruebas para cancelación y timeouts. | 45m | [ ] |
 | **Día 10** | Vie 23/10 | **Tarea `hashear` (CPU-bound) & Executor**: Implementar hash SHA-256 iterativo. Discutir GIL y resolverlo con `run_in_executor` (`ProcessPoolExecutor` vs `ThreadPoolExecutor`). Explicar por qué no bloquea la API. | 2h | [ ] |
 | **Día 11** | Sáb 24/10 | **Cancelación y Timeouts**: Implementar `DELETE /tareas/{id}`. Cancelar tareas encoladas y en ejecución (`task.cancel()`, captura de `asyncio.CancelledError`). Configurar timeout por tarea. | 2h | [ ] |

@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 
+from src.manager import TaskManager, calcular_estadisticas
 from src.models import (
     EstadisticasResponse,
     EstadoTarea,
@@ -15,28 +16,30 @@ from src.models import (
 )
 from src.pool import detener_workers, iniciar_workers
 
-# Estado global en memoria para las tareas (Single Source of Truth)
-tareas: dict[UUID, TareaResponse] = {}
+# Instancia global de TaskManager para persistencia en memoria (Single Source of Truth)
+manager = TaskManager()
+# Alias tareas para compatibilidad con tests e integraciones existentes
+tareas = manager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """En el inicio (antes del yield) se crea y guarda la cola y se guarda el dict global con tareas"""
-    n_workers = int(os.getenv("N_WORKERS", "3")) 
-    #se usa una variable de entorno porque univcorn 
-    #nos genera problema para pasar flags
+    """En el inicio (antes del yield) se crea y guarda la cola y el manager."""
+    n_workers = int(os.getenv("N_WORKERS", "3"))
+    # Se usa una variable de entorno porque uvicorn genera problemas para pasar flags
     cola: asyncio.Queue[UUID] = asyncio.Queue()
 
     app.state.cola = cola
-    app.state.tareas = tareas
+    app.state.manager = manager
+    app.state.tareas = manager
 
     workers = iniciar_workers(
         n_workers=n_workers, cola=cola, tareas=app.state.tareas
     )
     app.state.workers = workers
 
-    try:#sin este try cualquier error abortaria la corrutina en el yield, sin poderse ejecutar el finally
-        yield 
+    try:  # Sin este try cualquier error abortaría la corrutina en el yield, sin ejecutarse el finally
+        yield
     finally:
         await detener_workers(workers)
 
@@ -50,9 +53,14 @@ def get_cola(request: Request) -> asyncio.Queue[UUID]:
     return cola
 
 
-def get_tareas(request: Request) -> dict[UUID, TareaResponse]:
-    """Dependencia para inyectar el diccionario de tareas en memoria."""
-    return getattr(request.app.state, "tareas", tareas)
+def get_manager(request: Request) -> TaskManager:
+    """Dependencia para inyectar el TaskManager en memoria."""
+    return getattr(request.app.state, "manager", manager)
+
+
+def get_tareas(request: Request) -> TaskManager:
+    """Alias de compatibilidad para inyectar el almacén de tareas."""
+    return get_manager(request)
 
 
 app = FastAPI(
@@ -72,14 +80,14 @@ app = FastAPI(
 async def crear_tarea(
     tarea_in: TareaCreate,
     cola: asyncio.Queue[UUID] = Depends(get_cola),
-    tareas_db: dict[UUID, TareaResponse] = Depends(get_tareas),
+    manager_db: TaskManager = Depends(get_manager),
 ) -> TareaResponse:
     tarea = TareaResponse(
         tipo=TipoTarea(tarea_in.tipo),
         parametros=tarea_in.model_dump(exclude={"tipo"}),
         estado=EstadoTarea.PENDIENTE,
     )
-    tareas_db[tarea.id] = tarea
+    manager_db.guardar(tarea)
     await cola.put(tarea.id)
     return tarea
 
@@ -93,11 +101,9 @@ async def listar_tareas(
     estado: EstadoTarea | None = Query(
         default=None, description="Filtrar por estado de la tarea"
     ),
-    tareas_db: dict[UUID, TareaResponse] = Depends(get_tareas),
+    manager_db: TaskManager = Depends(get_manager),
 ) -> list[TareaResponse]:
-    if estado is not None:
-        return [t for t in tareas_db.values() if t.estado == estado]
-    return list(tareas_db.values())
+    return manager_db.listar(estado=estado)
 
 
 @app.get(
@@ -107,9 +113,9 @@ async def listar_tareas(
 )
 async def obtener_tarea(
     tarea_id: UUID,
-    tareas_db: dict[UUID, TareaResponse] = Depends(get_tareas),
+    manager_db: TaskManager = Depends(get_manager),
 ) -> TareaResponse:
-    tarea = tareas_db.get(tarea_id)
+    tarea = manager_db.obtener(tarea_id)
     if not tarea:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -124,40 +130,7 @@ async def obtener_tarea(
     summary="Obtener métricas y estadísticas del sistema",
 )
 async def obtener_estadisticas(
-    tareas_db: dict[UUID, TareaResponse] = Depends(get_tareas),
+    manager_db: TaskManager = Depends(get_manager),
 ) -> EstadisticasResponse:
-    total = len(tareas_db)
-    pendientes = sum(
-        1 for t in tareas_db.values() if t.estado == EstadoTarea.PENDIENTE
-    )
-    ejecutando = sum(
-        1 for t in tareas_db.values() if t.estado == EstadoTarea.EJECUTANDO
-    )
-    completadas = sum(
-        1 for t in tareas_db.values() if t.estado == EstadoTarea.COMPLETADA
-    )
-    fallidas = sum(
-        1 for t in tareas_db.values() if t.estado == EstadoTarea.FALLIDA
-    )
-    canceladas = sum(
-        1 for t in tareas_db.values() if t.estado == EstadoTarea.CANCELADA
-    )
+    return calcular_estadisticas(manager_db.listar())
 
-    duraciones = [
-        t.duracion_segundos
-        for t in tareas_db.values()
-        if t.duracion_segundos is not None
-    ]
-    tiempo_promedio = (
-        round(sum(duraciones) / len(duraciones), 4) if duraciones else 0.0
-    )
-
-    return EstadisticasResponse(
-        total=total,
-        pendientes=pendientes,
-        ejecutando=ejecutando,
-        completadas=completadas,
-        fallidas=fallidas,
-        canceladas=canceladas,
-        tiempo_promedio_ejecucion_segundos=tiempo_promedio,
-    )
