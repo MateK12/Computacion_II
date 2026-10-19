@@ -54,7 +54,7 @@ Este calendario está estructurado en 3 fases semanales (Sprints), dejando los �
 | Día | Fecha | Tarea / Actividad | Duración Estimada | Estado |
 |---|---|---|---|---|
 | **Día 8** | Mié 21/10 | **Tarea `descargar` (I/O-bound)**: Implementar descarga de lista de URLs concurrentemente con `httpx.AsyncClient` y `asyncio.gather`. Medir que el tiempo sea el del request más lento y no la suma. | 1.5h | [x] |
-| **Día 9** | Jue 22/10 | **Tarea `esperar`**: Implementar tarea que duerme $N$ segundos con `await asyncio.sleep()`. Servirá como banco de pruebas para cancelación y timeouts. | 45m | [ ] |
+| **Día 9** | Jue 22/10 | **Tarea `esperar`**: Implementar tarea que duerme $N$ segundos con `await asyncio.sleep()`. Servirá como banco de pruebas para cancelación y timeouts. | 45m | [x] |
 | **Día 10** | Vie 23/10 | **Tarea `hashear` (CPU-bound) & Executor**: Implementar hash SHA-256 iterativo. Discutir GIL y resolverlo con `run_in_executor` (`ProcessPoolExecutor` vs `ThreadPoolExecutor`). Explicar por qué no bloquea la API. | 2h | [ ] |
 | **Día 11** | Sáb 24/10 | **Cancelación y Timeouts**: Implementar `DELETE /tareas/{id}`. Cancelar tareas encoladas y en ejecución (`task.cancel()`, captura de `asyncio.CancelledError`). Configurar timeout por tarea. | 2h | [ ] |
 | **Día 12** | Dom 25/10 | **Apagado Ordenado (Graceful Shutdown)**: Capturar `SIGINT` y `SIGTERM`. Dejar de aceptar tareas nuevas, esperar tareas activas con límite y persistir el estado a `estado_<timestamp>.json`. Loguear al iniciar si existe dump. | 1.5h | [ ] |

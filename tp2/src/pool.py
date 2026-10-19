@@ -31,7 +31,7 @@ async def worker(
                 resultado = await estrategia.ejecutar(tarea.parametros)
                 tarea.resultado = resultado
                 tarea.estado = EstadoTarea.COMPLETADA
-            except asyncio.CancelledError:
+            except asyncio.CancelledError:  # sucede cuando se ejecuta el metodo .cancel() sobre una corrutina
                 tarea.estado = EstadoTarea.CANCELADA
                 raise
             except Exception as exc:
