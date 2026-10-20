@@ -1,5 +1,7 @@
-# venv del tp1
+# venvs
 tp1/tp1/
+.venv/
+venv/
 
 # Python
 __pycache__/
@@ -7,5 +9,6 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
-# artefactos del monitor
+# artefactos
 dump_*.json
+estado_*.json

@@ -2,6 +2,7 @@ from src.models import TipoTarea
 from src.tasks.base import TareaStrategy
 from src.tasks.descargar import DescargarStrategy
 from src.tasks.esperar import EsperarStrategy
+from src.tasks.hashear import HashearStrategy
 
 REGISTRO_ESTRATEGIAS: dict[TipoTarea, TareaStrategy] = {}
 
@@ -24,3 +25,4 @@ def obtener_estrategia(tipo: TipoTarea) -> TareaStrategy:
 # Registro de estrategias por defecto
 registrar_estrategia(TipoTarea.DESCARGAR, DescargarStrategy())
 registrar_estrategia(TipoTarea.ESPERAR, EsperarStrategy())
+registrar_estrategia(TipoTarea.HASHEAR, HashearStrategy())
