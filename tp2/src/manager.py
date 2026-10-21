@@ -1,3 +1,5 @@
+import asyncio
+from typing import Any
 from uuid import UUID
 
 from src.models import (
@@ -12,6 +14,7 @@ class TaskManager:
 
     def __init__(self) -> None:
         self._tareas: dict[UUID, TareaResponse] = {}
+        self._runners: dict[UUID, asyncio.Task[Any]] = {}
 
     def guardar(self, tarea: TareaResponse) -> TareaResponse:
         """Almacena o actualiza una tarea en el repositorio."""
@@ -21,6 +24,18 @@ class TaskManager:
     def obtener(self, tarea_id: UUID) -> TareaResponse | None:
         """Obtiene una tarea por su identificador único."""
         return self._tareas.get(tarea_id)
+
+    def registrar_runner(self, tarea_id: UUID, runner: asyncio.Task[Any]) -> None:
+        """Registra el asyncio.Task activo que ejecuta la tarea."""
+        self._runners[tarea_id] = runner
+
+    def desregistrar_runner(self, tarea_id: UUID) -> asyncio.Task[Any] | None:
+        """Elimina y retorna el asyncio.Task asociado a la tarea si existía."""
+        return self._runners.pop(tarea_id, None)
+
+    def obtener_runner(self, tarea_id: UUID) -> asyncio.Task[Any] | None:
+        """Obtiene el asyncio.Task activo asociado a la tarea."""
+        return self._runners.get(tarea_id)
 
     def listar(
         self, estado: EstadoTarea | None = None
@@ -32,11 +47,13 @@ class TaskManager:
 
     def eliminar(self, tarea_id: UUID) -> bool:
         """Elimina una tarea por su ID. Retorna True si existía y fue removida."""
+        self._runners.pop(tarea_id, None)
         return self._tareas.pop(tarea_id, None) is not None
 
     def limpiar(self) -> None:
         """Limpia todo el almacén de tareas (útil para tests o reinicio)."""
         self._tareas.clear()
+        self._runners.clear()
 
     def clear(self) -> None:
         """Alias de limpiar() para compatibilidad con interfaces de mapping/dict."""

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
@@ -58,6 +59,36 @@ def test_task_manager_eliminar_y_limpiar():
     manager.guardar(tarea)
     manager.limpiar()
     assert len(manager) == 0
+
+
+@pytest.mark.asyncio
+async def test_task_manager_runners():
+    manager = TaskManager()
+    tarea_id = uuid4()
+
+    async def dummy():
+        await asyncio.sleep(1)
+
+    runner = asyncio.create_task(dummy())
+    try:
+        assert manager.obtener_runner(tarea_id) is None
+        manager.registrar_runner(tarea_id, runner)
+        assert manager.obtener_runner(tarea_id) == runner
+
+        desregistrado = manager.desregistrar_runner(tarea_id)
+        assert desregistrado == runner
+        assert manager.obtener_runner(tarea_id) is None
+
+        # Re-registrar y verificar limpiar
+        manager.registrar_runner(tarea_id, runner)
+        manager.limpiar()
+        assert manager.obtener_runner(tarea_id) is None
+    finally:
+        runner.cancel()
+        try:
+            await runner
+        except asyncio.CancelledError:
+            pass
 
 
 def test_calcular_estadisticas_vacio():
