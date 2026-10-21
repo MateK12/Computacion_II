@@ -1,7 +1,8 @@
 import asyncio
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from datetime import datetime, timezone
+from typing import Any, AsyncGenerator
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
@@ -133,4 +134,56 @@ async def obtener_estadisticas(
     manager_db: TaskManager = Depends(get_manager),
 ) -> EstadisticasResponse:
     return calcular_estadisticas(manager_db.listar())
+
+
+def _validar_cancelacion(
+    tarea: TareaResponse | None, tarea_id: UUID
+) -> dict[str, Any] | None:
+    """Valida si una tarea existe y es elegible para ser cancelada."""
+    if not tarea:
+        return {
+            "status": status.HTTP_404_NOT_FOUND,
+            "detail": f"Tarea con ID {tarea_id} no encontrada",
+        }
+    if tarea.estado in {
+        EstadoTarea.COMPLETADA,
+        EstadoTarea.FALLIDA,
+        EstadoTarea.CANCELADA,
+    }:
+        return {
+            "status": status.HTTP_400_BAD_REQUEST,
+            "detail": f"La tarea ya se encuentra en estado '{tarea.estado.value}' y no puede ser cancelada",
+        }
+    return None
+
+
+@app.delete(
+    "/tareas/{tarea_id}",
+    response_model=TareaResponse,
+    summary="Cancelar una tarea pendiente o en ejecución",
+)
+async def cancelar_tarea(
+    tarea_id: UUID,
+    manager_db: TaskManager = Depends(get_manager),
+) -> TareaResponse:
+    tarea = manager_db.obtener(tarea_id)
+    error = _validar_cancelacion(tarea, tarea_id)
+    if error:
+        raise HTTPException(
+            status_code=error["status"],
+            detail=error["detail"],
+        )
+
+    assert tarea is not None
+    if tarea.estado == EstadoTarea.PENDIENTE:
+        tarea.estado = EstadoTarea.CANCELADA
+        tarea.finalizada_en = datetime.now(timezone.utc)
+    elif tarea.estado == EstadoTarea.EJECUTANDO:
+        runner = manager_db.obtener_runner(tarea_id)
+        if runner and not runner.done():
+            runner.cancel()
+        tarea.estado = EstadoTarea.CANCELADA
+        tarea.finalizada_en = datetime.now(timezone.utc)
+
+    return tarea
 

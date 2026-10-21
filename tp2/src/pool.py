@@ -28,12 +28,41 @@ async def worker(
 
             try:
                 estrategia = obtener_estrategia(tarea.tipo)
-                resultado = await estrategia.ejecutar(tarea.parametros)
-                tarea.resultado = resultado
-                tarea.estado = EstadoTarea.COMPLETADA
-            except asyncio.CancelledError:  # sucede cuando se ejecuta el metodo .cancel() sobre una corrutina
+                runner = asyncio.create_task(
+                    estrategia.ejecutar(tarea.parametros),
+                    name=f"runner-{tarea_id}",
+                )
+                if hasattr(tareas, "registrar_runner"):
+                    tareas.registrar_runner(tarea.id, runner)
+
+                timeout = tarea.parametros.get("timeout")
+                try:
+                    if timeout:
+                        resultado = await asyncio.wait_for(
+                            runner, timeout=float(timeout)
+                        )
+                    else:
+                        resultado = await runner
+                    tarea.resultado = resultado
+                    tarea.estado = EstadoTarea.COMPLETADA
+                except TimeoutError:
+                    tarea.estado = EstadoTarea.FALLIDA
+                    tarea.error = (
+                        f"Tiempo límite de ejecución excedido ({timeout}s)"
+                    )
+                except asyncio.CancelledError:
+                    tarea.estado = EstadoTarea.CANCELADA
+                    current_task = asyncio.current_task()
+                    if current_task and current_task.cancelling() > 0:
+                        raise
+                finally:
+                    if hasattr(tareas, "desregistrar_runner"):
+                        tareas.desregistrar_runner(tarea.id)
+            except asyncio.CancelledError:
                 tarea.estado = EstadoTarea.CANCELADA
-                raise
+                current_task = asyncio.current_task()
+                if current_task and current_task.cancelling() > 0:
+                    raise
             except Exception as exc:
                 tarea.estado = EstadoTarea.FALLIDA
                 tarea.error = str(exc)
