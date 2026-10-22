@@ -37,6 +37,10 @@ class TaskManager:
         """Obtiene el asyncio.Task activo asociado a la tarea."""
         return self._runners.get(tarea_id)
 
+    def listar_runners(self) -> list[asyncio.Task[Any]]:
+        """Retorna la lista de asyncio.Task runner actualmente en ejecución."""
+        return list(self._runners.values())
+
     def listar(
         self, estado: EstadoTarea | None = None
     ) -> list[TareaResponse]:

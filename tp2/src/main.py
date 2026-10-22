@@ -15,7 +15,8 @@ from src.models import (
     TareaResponse,
     TipoTarea,
 )
-from src.pool import detener_workers, iniciar_workers
+from src.persistencia import reportar_volcados_previos
+from src.pool import apagar_sistema, iniciar_workers
 
 # Instancia global de TaskManager para persistencia en memoria (Single Source of Truth)
 manager = TaskManager()
@@ -25,9 +26,11 @@ tareas = manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """En el inicio (antes del yield) se crea y guarda la cola y el manager."""
+    """Ciclo de vida de la aplicación: arranque y apagado ordenado."""
+    dir_snapshots = os.getenv("SNAPSHOT_DIR", ".")
+    reportar_volcados_previos(dir_snapshots)
+
     n_workers = int(os.getenv("N_WORKERS", "3"))
-    # Se usa una variable de entorno porque uvicorn genera problemas para pasar flags
     cola: asyncio.Queue[UUID] = asyncio.Queue()
 
     app.state.cola = cola
@@ -39,10 +42,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     app.state.workers = workers
 
-    try:  # Sin este try cualquier error abortaría la corrutina en el yield, sin ejecutarse el finally
+    try:
         yield
     finally:
-        await detener_workers(workers)
+        timeout_gracia = float(os.getenv("SHUTDOWN_TIMEOUT", "5.0"))
+        await apagar_sistema(
+            workers=workers,
+            manager=app.state.manager,
+            timeout_gracia=timeout_gracia,
+            directorio_snapshot=dir_snapshots,
+        )
 
 
 def get_cola(request: Request) -> asyncio.Queue[UUID]:

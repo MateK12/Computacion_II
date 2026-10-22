@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,7 +23,8 @@ class MockErrorStrategy(TareaStrategy):
 
 
 @pytest.fixture(autouse=True)
-def restaurar_estado():
+def restaurar_estado(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SNAPSHOT_DIR", str(tmp_path))
     tareas.clear()
     estrategias_backup = dict(REGISTRO_ESTRATEGIAS)
     yield
@@ -101,3 +103,36 @@ async def test_lifespan_shutdown_cancela_workers():
 
     # Una vez finalizado el bloque del lifespan, todos los workers deben estar cancelados/finalizados
     assert all(w.done() for w in workers)
+
+
+@pytest.mark.asyncio
+async def test_lifespan_shutdown_genera_snapshot_y_reporta_previos(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+):
+    """Verifica que el lifespan reporte snapshots previos al iniciar y genere uno nuevo al salir."""
+    # 1. Simular un dump previo existente
+    dump_previo = tmp_path / "estado_20261021_120000.json"
+    dump_previo.write_text("[]", encoding="utf-8")
+
+    registrar_estrategia(TipoTarea.ESPERAR, MockEsperarStrategy())
+
+    with caplog.at_level("INFO"):
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                resp = await client.post(
+                    "/tareas", json={"tipo": "esperar", "segundos": 0.01}
+                )
+                assert resp.status_code == 202
+                await app.state.cola.join()
+
+    # Verificar que al arrancar reportó el volcado previo
+    assert "Se detectaron 1 volcado(s) previo(s)" in caplog.text
+
+    # Verificar que al apagarse generó un nuevo archivo de snapshot
+    volcados = sorted(tmp_path.glob("estado_*.json"))
+    assert len(volcados) == 2
+    nuevo_volcado = [f for f in volcados if f != dump_previo][0]
+    assert nuevo_volcado.exists()

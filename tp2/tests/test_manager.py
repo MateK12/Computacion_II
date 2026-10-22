@@ -81,8 +81,10 @@ async def test_task_manager_runners():
 
         # Re-registrar y verificar limpiar
         manager.registrar_runner(tarea_id, runner)
+        assert manager.listar_runners() == [runner]
         manager.limpiar()
         assert manager.obtener_runner(tarea_id) is None
+        assert manager.listar_runners() == []
     finally:
         runner.cancel()
         try:

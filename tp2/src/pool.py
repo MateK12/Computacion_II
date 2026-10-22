@@ -1,9 +1,13 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 from uuid import UUID
 
+from src.manager import TaskManager
 from src.models import EstadoTarea, TareaResponse
+from src.persistencia import guardar_snapshot
 from src.tasks import obtener_estrategia
 
 logger = logging.getLogger(__name__)
@@ -98,3 +102,50 @@ async def detener_workers(workers: list[asyncio.Task]) -> None:
     for task in workers:
         task.cancel()
     await asyncio.gather(*workers, return_exceptions=True)
+
+
+async def apagar_sistema(
+    workers: list[asyncio.Task[Any]],
+    manager: TaskManager,
+    timeout_gracia: float = 5.0,
+    directorio_snapshot: Path | str = ".",
+) -> Path:
+    """Orquesta el apagado ordenado del sistema y persiste su estado en disco.
+
+    1. Cancela las tareas pendientes para que los workers no inicien nuevo trabajo.
+    2. Espera a los runners activos con un tiempo de gracia; si expiran, los cancela.
+    3. Detiene a los workers del pool.
+    4. Guarda un snapshot del estado de todas las tareas en un archivo JSON.
+    """
+    logger.info("Iniciando apagado ordenado (timeout de gracia: %.1fs)...", timeout_gracia)
+
+    # 1. Cancelar tareas pendientes
+    pendientes = manager.listar(EstadoTarea.PENDIENTE)
+    for t in pendientes:
+        t.estado = EstadoTarea.CANCELADA
+        t.error = "Cancelada por apagado del servidor"
+        t.finalizada_en = datetime.now(timezone.utc)
+    if pendientes:
+        logger.info("Canceladas %d tarea(s) pendiente(s) en cola", len(pendientes))
+
+    # 2. Esperar runners activos con timeout de gracia
+    runners = manager.listar_runners()
+    if runners:
+        logger.info("Esperando %d runner(s) activo(s)...", len(runners))
+        done, pending = await asyncio.wait(runners, timeout=timeout_gracia)
+        if pending:
+            logger.warning(
+                "Timeout de gracia expirado. Cancelando %d runner(s) que no terminaron a tiempo",
+                len(pending),
+            )
+            for r in pending:
+                r.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    # 3. Detener a los workers del pool
+    await detener_workers(workers)
+
+    # 4. Volcar snapshot a disco
+    archivo_snapshot = guardar_snapshot(manager.values(), directorio=directorio_snapshot)
+    logger.info("Apagado ordenado finalizado con éxito en %s", archivo_snapshot.name)
+    return archivo_snapshot

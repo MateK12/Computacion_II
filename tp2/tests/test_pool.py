@@ -6,7 +6,7 @@ import pytest
 
 from src.manager import TaskManager
 from src.models import EstadoTarea, TareaResponse, TipoTarea
-from src.pool import detener_workers, iniciar_workers
+from src.pool import apagar_sistema, detener_workers, iniciar_workers
 from src.tasks import REGISTRO_ESTRATEGIAS, registrar_estrategia
 from src.tasks.base import TareaStrategy
 
@@ -202,3 +202,98 @@ async def test_worker_timeout_marca_fallida_y_continua_vivo():
     assert t2.estado == EstadoTarea.COMPLETADA
 
     await detener_workers(workers)
+
+
+@pytest.mark.asyncio
+async def test_apagar_sistema_cancela_pendientes_y_persiste(tmp_path):
+    manager = TaskManager()
+    cola: asyncio.Queue[UUID] = asyncio.Queue()
+
+    t_pendiente = TareaResponse(
+        tipo=TipoTarea.ESPERAR,
+        parametros={"segundos": 1.0},
+        estado=EstadoTarea.PENDIENTE,
+    )
+    t_completada = TareaResponse(
+        tipo=TipoTarea.HASHEAR,
+        parametros={"texto": "abc"},
+        estado=EstadoTarea.COMPLETADA,
+    )
+    manager.guardar(t_pendiente)
+    manager.guardar(t_completada)
+
+    workers = iniciar_workers(n_workers=2, cola=cola, tareas=manager)
+
+    archivo = await apagar_sistema(
+        workers=workers,
+        manager=manager,
+        timeout_gracia=0.5,
+        directorio_snapshot=tmp_path,
+    )
+
+    # 1. Tarea pendiente marcada como cancelada
+    assert t_pendiente.estado == EstadoTarea.CANCELADA
+    assert "Cancelada por apagado del servidor" in (t_pendiente.error or "")
+    assert t_pendiente.finalizada_en is not None
+
+    # 2. Workers detenidos
+    assert all(w.done() for w in workers)
+
+    # 3. Snapshot creado en tmp_path
+    assert archivo.exists()
+    assert archivo.parent == tmp_path
+
+
+@pytest.mark.asyncio
+async def test_apagar_sistema_espera_runners_y_cancela_excedidos(tmp_path):
+    class RapidaStrategy(TareaStrategy):
+        async def ejecutar(self, parametros: dict[str, Any]) -> Any:
+            await asyncio.sleep(0.02)
+            return "rapida ok"
+
+    class EternaStrategy(TareaStrategy):
+        async def ejecutar(self, parametros: dict[str, Any]) -> Any:
+            await asyncio.sleep(10.0)
+            return "no deberia llegar"
+
+    registrar_estrategia(TipoTarea.ESPERAR, RapidaStrategy())
+    registrar_estrategia(TipoTarea.HASHEAR, EternaStrategy())
+
+    manager = TaskManager()
+    cola: asyncio.Queue[UUID] = asyncio.Queue()
+
+    t_rapida = TareaResponse(
+        tipo=TipoTarea.ESPERAR,
+        parametros={"segundos": 0.02},
+        estado=EstadoTarea.PENDIENTE,
+    )
+    t_lenta = TareaResponse(
+        tipo=TipoTarea.HASHEAR,
+        parametros={"texto": "lenta"},
+        estado=EstadoTarea.PENDIENTE,
+    )
+    manager.guardar(t_rapida)
+    manager.guardar(t_lenta)
+
+    await cola.put(t_rapida.id)
+    await cola.put(t_lenta.id)
+
+    workers = iniciar_workers(n_workers=2, cola=cola, tareas=manager)
+
+    # Esperar un instante para que ambos workers tomen las tareas y arranquen los runners
+    await asyncio.sleep(0.01)
+    assert len(manager.listar_runners()) >= 1
+
+    # Apagar el sistema con gracia de 0.1s (la rápida termina en 0.02s, la lenta no llega)
+    await apagar_sistema(
+        workers=workers,
+        manager=manager,
+        timeout_gracia=0.1,
+        directorio_snapshot=tmp_path,
+    )
+
+    assert t_rapida.estado == EstadoTarea.COMPLETADA
+    assert t_rapida.resultado == "rapida ok"
+
+    assert t_lenta.estado == EstadoTarea.CANCELADA
+    assert all(w.done() for w in workers)
