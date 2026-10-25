@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    container_name: tp2-app
+    ports:
+      - "8000:8000"
+    environment:
+      - N_WORKERS=3
+      - SHUTDOWN_TIMEOUT=5.0
+      - SNAPSHOT_DIR=/app/snapshots
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./snapshots:/app/snapshots
+    stop_grace_period: 15s #define tiempo de espera entre SIGTERM de docker y el SIGKILL (por defecto 10s)
+    #todo esto cuando se quiere frenar el contenedor (docker stop)
