@@ -79,7 +79,34 @@ Se ejecutó el benchmark automatizado [`benchmarks/medir_io.py`](benchmarks/medi
 ---
 
 ### Medición 2: El Event Loop Bloqueado (CPU-bound)
-*(A completar según cronograma)*
+
+El objetivo de esta medición es demostrar de manera cuantitativa el impacto de ejecutar tareas intensivas de CPU directamente dentro del hilo del event loop frente a delegarlas a un pool de procesos (`ProcessPoolExecutor`).
+
+#### Metodología
+
+Se ejecutó el benchmark automatizado [`benchmarks/medir_bloqueo.py`](benchmarks/medir_bloqueo.py) contra la API corriendo en Docker:
+1. Se encoló una tarea `hashear` con **3.000.000 de iteraciones SHA-256 encadenadas**.
+2. De forma concurrente, el cliente emitió ráfagas periódicas de peticiones de lectura a `GET /tareas` cada 50 ms para registrar las latencias experimentadas por otros usuarios.
+3. Se evaluaron dos condiciones:
+   - **Con Executor (`usar_executor: true`)**: La tarea delega el cómputo a un proceso hijo mediante `loop.run_in_executor(ProcessPoolExecutor, ...)`.
+   - **Sin Executor (`usar_executor: false`)**: La tarea ejecuta el bucle de hashing directamente dentro de la corrutina en el hilo principal del event loop.
+
+#### Resultados Obtenidos
+
+| Métrica de Rendimiento | Con ProcessPoolExecutor | Sin Executor (En Event Loop) | Impacto / Factor de Degradación |
+|------------------------|-------------------------|------------------------------|---------------------------------|
+| **Duración de la tarea (Servidor)** | 1.673 s | 1.664 s | Tiempo de cómputo equivalente (~1.67 s) |
+| **Pings `GET /tareas` Respondidos** | 34 | 33 | Cobertura durante la ventana de ejecución |
+| **Latencia Mínima** | **1.56 ms** | 62.92 ms | $40.3\times$ mayor |
+| **Latencia Mediana ($p_{50}$)** | **2.20 ms** | 866.28 ms | **$393.8\times$ mayor** |
+| **Latencia Promedio** | **4.02 ms** | 865.38 ms | **$215.0\times$ más lento** |
+| **Latencia Máxima** | **56.72 ms** | **1666.60 ms** | **$29.4\times$ más lento** (~1.67 s de espera) |
+
+#### Interpretación y Fundamento Teórico
+
+1. **Monopolio del hilo de ejecución (Starvation del Event Loop)**: En el modelo de concurrencia cooperativa de `asyncio`, todas las corrutinas comparten un único hilo del SO. Si una corrutina ejecuta un bucle cerrado de CPU sin puntos de suspensión (`await`), el runtime no puede conmutar de contexto. El hilo queda 100% ocupado ejecutando instrucciones aritméticas y no puede invocar al multiplexor de E/S (`epoll`).
+2. **Retención en el Listen Backlog del Kernel**: Durante el segundo y medio de bloqueo, las solicitudes HTTP entrantes se acumulan en la cola TCP del kernel (`listen backlog`). Cuando la corrutina finalmente termina, el loop se reactiva y atiende todas las peticiones represadas en ráfaga. Por esta razón, la latencia máxima observada (1666.60 ms) coincide casi exactamente con la duración neta del cómputo CPU-bound (1664 ms).
+3. **Evasión del GIL mediante Procesos Separados**: A diferencia de los hilos de Python (que compiten por el Global Interpreter Lock impidiendo el paralelismo de CPU), el `ProcessPoolExecutor` lanza procesos independientes del sistema operativo con su propio espacio de memoria e intérprete. El hilo principal se limita a delegar el trabajo y esperar de forma no bloqueante a través de un descriptor de socket/pipe IPC, permitiendo que la API continúe despachando peticiones con latencias del orden de 2 a 4 ms.
 
 ---
 
@@ -106,4 +133,10 @@ pytest
 
 ```bash
 python benchmarks/medir_io.py
+```
+
+### Ejecutar Benchmark de Event Loop Bloqueado (CPU-bound)
+
+```bash
+python benchmarks/medir_bloqueo.py
 ```

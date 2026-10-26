@@ -44,10 +44,13 @@ class HashearStrategy(TareaStrategy):
         self._executor = executor
 
     async def ejecutar(self, parametros: dict[str, Any]) -> dict[str, Any]:
-        """Ejecuta el cómputo CPU-bound en el executor sin congelar el event loop."""
+        """Ejecuta el cómputo CPU-bound en el executor sin congelar el event loop (o en loop si usar_executor=False)."""
         if "tipo" not in parametros:
             parametros = {**parametros, "tipo": "hashear"}
         datos = TareaHashearCreate.model_validate(parametros)
+
+        if not datos.usar_executor:
+            return computar_hash_iterativo(datos.texto, datos.iteraciones)
 
         executor = self._executor or obtener_executor()
         loop = asyncio.get_running_loop()

@@ -70,7 +70,7 @@ Este calendario está estructurado en 3 fases semanales (Sprints), dejando los �
 | Día | Fecha | Tarea / Actividad | Duración Estimada | Estado |
 |---|---|---|---|---|
 | **Día 15** | Mié 28/10 | **Medición 1 (Concurrencia I/O)**: Script de 20 descargas secuenciales vs 20 concurrentes. Calcular Speedup real. | 1.5h | [x] |
-| **Día 16** | Jue 29/10 | **Medición 2 (Event Loop Bloqueado)**: Script que mide latencia de `GET /tareas` mientras corre `hashear` sin executor vs con executor. | 1.5h | [ ] |
+| **Día 16** | Jue 29/10 | **Medición 2 (Event Loop Bloqueado)**: Script que mide latencia de `GET /tareas` mientras corre `hashear` sin executor vs con executor. | 1.5h | [x] |
 | **Día 17** | Vie 30/10 | **Medición 3 (Techo del Pool)**: Incrementar tareas concurrentes hasta saturar. Encontrar el límite del sistema (sockets, CPU, RAM) y explicar el porqué. | 1.5h | [ ] |
 | **Día 18** | Sáb 31/10 | **Redacción del `README.md` (Parte 1)**: Diagrama de arquitectura, guía de uso con ejemplos `curl`, justificación de decisiones (Queue, Executor, Lock, Cancelación). | 2h | [ ] |
 | **Día 19** | Dom 01/11 | **Redacción del `README.md` (Parte 2)**: Incorporar tablas de mediciones, interpretación de números, conexión con las clases teóricas (select/epoll, event loop, GIL) y lo aprendido. | 2h | [ ] |

@@ -43,6 +43,18 @@ async def test_hashear_strategy_ejecucion_exitosa():
 
 
 @pytest.mark.asyncio
+async def test_hashear_strategy_sin_executor():
+    """Verifica que la estrategia pueda ejecutarse directamente en el loop (para benchmarks)."""
+    strategy = HashearStrategy()
+    parametros = {"texto": "hola", "iteraciones": 100, "usar_executor": False}
+    resultado = await strategy.ejecutar(parametros)
+
+    assert resultado["texto_original"] == "hola"
+    assert resultado["iteraciones"] == 100
+    assert len(resultado["hash_final"]) == 64
+
+
+@pytest.mark.asyncio
 async def test_hashear_strategy_validacion_parametros():
     """Verifica que no se acepten textos vacíos ni iteraciones no positivas."""
     strategy = HashearStrategy()

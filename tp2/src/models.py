@@ -45,6 +45,10 @@ class TareaHashearCreate(TareaBaseCreate):
         gt=0,
         description="Cantidad de iteraciones SHA-256 (CPU-bound)",
     )
+    usar_executor: bool = Field(
+        default=True,
+        description="Si True, ejecuta en ProcessPoolExecutor. Si False, corre en el event loop (para benchmarking de bloqueo)",
+    )
 
 
 class TareaEsperarCreate(TareaBaseCreate):
