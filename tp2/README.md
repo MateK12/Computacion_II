@@ -111,7 +111,26 @@ Se ejecutó el benchmark automatizado [`benchmarks/medir_bloqueo.py`](benchmarks
 ---
 
 ### Medición 3: Techo del Pool y Saturación
-*(A completar según cronograma)*
+
+Se evaluó la capacidad de absorción y procesamiento de la plataforma ante ráfagas crecientes de tareas concurrentes ($N \in \{10, 50, 100, 500, 1000\}$). Se utilizó la tarea `esperar` con una duración base de $0.05\text{ s}$ ejecutada en el contenedor Docker con $N_{\text{workers}} = 3$.
+
+#### Resultados Empíricos
+
+| Tareas ($N$) | T. Encolado | T. Total Drenado | Throughput Real | POST Latencia ($p_{50}$) | POST Latencia Máx | Espera en Cola Promedio | Espera en Cola Máx |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **10** | 0.067 s | 0.293 s | **34.17 t/s** | 59.39 ms | 66.43 ms | 0.061 s | 0.147 s |
+| **50** | 0.146 s | 0.965 s | **51.80 t/s** | 99.65 ms | 121.26 ms | 0.395 s | 0.801 s |
+| **100** | 0.298 s | 1.841 s | **54.31 t/s** | 84.26 ms | 216.87 ms | 0.742 s | 1.436 s |
+| **500** | 2.413 s | 8.531 s | **58.61 t/s** | 148.06 ms | 1346.61 ms | 3.074 s | 6.035 s |
+| **1000** | 4.867 s | 17.035 s | **58.70 t/s** | 152.44 ms | 1598.57 ms | 6.085 s | 12.067 s |
+
+#### Interpretación y Fundamento Teórico
+
+1. **Convergencia al Techo Teórico de Throughput**: Con $N=3$ workers y tareas de duración $t = 0.05\text{ s}$, la tasa máxima teórica de procesamiento es:
+   $$\mu = \frac{N_{\text{workers}}}{t} = \frac{3}{0.05\text{ s}} = 60.0\text{ tareas/segundo}$$
+   Los datos empíricos demuestran cómo el sistema amortiza la sobrecarga de arranque y converge asintóticamente a su asíntota teórica: desde $34.17\text{ t/s}$ en lotes pequeños hasta **$58.70\text{ t/s}$** con 1.000 tareas (**$97.8\%$ de eficiencia teórica**).
+2. **Buffer Elástico y Ley de Little**: La tasa de llegada de tareas a la API superó con creces la capacidad de drenado ($\lambda \approx 205\text{ t/s} > \mu \approx 60\text{ t/s}$). La cola monohilo `asyncio.Queue` actuó como amortiguador en memoria sin descartar peticiones. Siguiendo la Ley de Little ($L = \lambda W$), a mayor saturación acumulada, el tiempo de espera en cola escala de manera proporcional: mientras las primeras tareas son tomadas de inmediato, las últimas tareas de la tanda de 1.000 esperaron hasta $12.067\text{ s}$ antes de ser atendidas por un worker libre.
+3. **Desacoplamiento entre Ingestión HTTP y Workers**: A pesar de inyectar 1.000 peticiones en ráfaga, la latencia mediana de `POST /tareas` ($p_{50}$) se mantuvo en el rango de los $\sim 150\text{ ms}$. Esto demuestra la efectividad de la arquitectura asíncrona: la API confirma la recepción y cede el trabajo a la cola de forma no bloqueante, aislando a los clientes web de la congestión interna del pool.
 
 ---
 
@@ -139,4 +158,10 @@ python benchmarks/medir_io.py
 
 ```bash
 python benchmarks/medir_bloqueo.py
+```
+
+### Ejecutar Benchmark de Techo del Pool y Saturación
+
+```bash
+python benchmarks/medir_techo.py
 ```
