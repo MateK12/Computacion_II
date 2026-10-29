@@ -55,7 +55,7 @@ async def worker(
                         f"Tiempo límite de ejecución excedido ({timeout}s)"
                     )
                 except asyncio.CancelledError:
-                    tarea.estado = EstadoTarea.CANCELADA
+                    tarea.estado = EstadoTarea.CANCELADA # Se vuelve a poner como cancelado (evita race condition})
                     current_task = asyncio.current_task()
                     if current_task and current_task.cancelling() > 0:
                         raise

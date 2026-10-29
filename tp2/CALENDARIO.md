@@ -72,8 +72,8 @@ Este calendario está estructurado en 3 fases semanales (Sprints), dejando los �
 | **Día 15** | Mié 28/10 | **Medición 1 (Concurrencia I/O)**: Script de 20 descargas secuenciales vs 20 concurrentes. Calcular Speedup real. | 1.5h | [x] |
 | **Día 16** | Jue 29/10 | **Medición 2 (Event Loop Bloqueado)**: Script que mide latencia de `GET /tareas` mientras corre `hashear` sin executor vs con executor. | 1.5h | [x] |
 | **Día 17** | Vie 30/10 | **Medición 3 (Techo del Pool)**: Incrementar tareas concurrentes hasta saturar. Encontrar el límite del sistema (sockets, CPU, RAM) y explicar el porqué. | 1.5h | [x] |
-| **Día 18** | Sáb 31/10 | **Redacción del `README.md` (Parte 1)**: Diagrama de arquitectura, guía de uso con ejemplos `curl`, justificación de decisiones (Queue, Executor, Lock, Cancelación). | 2h | [ ] |
-| **Día 19** | Dom 01/11 | **Redacción del `README.md` (Parte 2)**: Incorporar tablas de mediciones, interpretación de números, conexión con las clases teóricas (select/epoll, event loop, GIL) y lo aprendido. | 2h | [ ] |
+| **Día 18** | Sáb 31/10 | **Redacción del `README.md` (Parte 1)**: Diagrama de arquitectura, guía de uso con ejemplos `curl`, justificación de decisiones (Queue, Executor, Lock, Cancelación). | 2h | [x] |
+| **Día 19** | Dom 01/11 | **Redacción del `README.md` (Parte 2)**: Incorporar tablas de mediciones, interpretación de números, conexión con las clases teóricas (select/epoll, event loop, GIL) y lo aprendido. | 2h | [x] |
 | **Día 20** | Lun 02/11 | **Buffer de Contingencia & Simulación Oral**: Repasar preguntas de examen oral de la cátedra. Verificar `docker compose up --build` desde cero. Limpieza de código (PEP 8). | 1.5h | [ ] |
 | **Día 21** | **Mar 03/11** | **ENTREGA FINAL (Clase 24)**: Verificar repositorio público en GitHub, links, badges y entregar en horario de clase. | 30m | [ ] |
 
@@ -81,8 +81,8 @@ Este calendario está estructurado en 3 fases semanales (Sprints), dejando los �
 
 ## Puntos de Control y Criterios de Aprobación
 
-- [ ] **Funcionalidad (25%)**: ¿La API responde de inmediato al POST? ¿Las tareas transicionan correctamente por los estados?
-- [ ] **Asincronismo (30%)**: ¿El event loop jamás se bloquea? ¿Las descargas son concurrentes? ¿La cancelación limpia recursos sin dejar corrutinas colgadas?
-- [ ] **Mediciones (15%)**: ¿Están los números reales de las 3 mediciones con su speedup y análisis?
-- [ ] **README (20%)**: ¿Están justificadas las decisiones y conectadas con las clases 13 a 22?
-- [ ] **Código y Docker (10%)**: ¿Todo levanta con `docker compose up --build` de forma reproducible?
+- [x] **Funcionalidad (25%)**: ¿La API responde de inmediato al POST? ¿Las tareas transicionan correctamente por los estados?
+- [x] **Asincronismo (30%)**: ¿El event loop jamás se bloquea? ¿Las descargas son concurrentes? ¿La cancelación limpia recursos sin dejar corrutinas colgadas?
+- [x] **Mediciones (15%)**: ¿Están los números reales de las 3 mediciones con su speedup y análisis?
+- [x] **README (20%)**: ¿Están justificadas las decisiones y conectadas con las clases 13 a 22?
+- [x] **Código y Docker (10%)**: ¿Todo levanta con `docker compose up --build` de forma reproducible?

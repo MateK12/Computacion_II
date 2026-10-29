@@ -197,7 +197,7 @@ async def cancelar_tarea(
         runner = manager_db.obtener_runner(tarea_id)
         if runner and not runner.done():
             runner.cancel()
-        tarea.estado = EstadoTarea.CANCELADA
+        tarea.estado = EstadoTarea.CANCELADA # se pone como cancelada aunque el worker lo va a volver a hacer en su bloque de excepcion
         tarea.finalizada_en = datetime.now(timezone.utc)
 
     return tarea

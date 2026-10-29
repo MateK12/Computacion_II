@@ -37,14 +37,130 @@ Servicio asíncrono para delegación y procesamiento distribuido de tareas vía 
 
 ### Componentes Principales
 
-| Componente | Rol y Responsabilidad |
-|------------|-----------------------|
-| **FastAPI API** | Expone los endpoints HTTP. Inyecta tareas en cola y responde inmediatamente con estado `pendiente` (HTTP 202). |
-| **TaskManager** | Repositorio de estado en memoria (SSOT). Registra modelos `TareaResponse` y referencias a los `asyncio.Task` activos (`runners`) para permitir cancelación granular. |
-| **asyncio.Queue** | Cola en memoria donde se transmiten únicamente los identificadores (`UUID`) de las tareas pendientes. |
-| **Worker Pool** | Conjunto de $N$ corrutinas que consumen identificadores de la cola secuencialmente, despachan a la estrategia correspondiente y administran timeouts. |
-| **ProcessPoolExecutor** | Pool de procesos separados del sistema operativo para aislar tareas CPU-bound (`hashear`) del GIL y del event loop. |
-| **Persistencia** | Serializador de snapshots JSON ante apagado ordenado (`SIGINT`/`SIGTERM`) y recuperador de historial previo. |
+| Componente              | Rol y Responsabilidad                                                                                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **FastAPI API**         | Expone los endpoints HTTP. Inyecta tareas en cola y responde inmediatamente con estado `pendiente` (HTTP 202).                                                       |
+| **TaskManager**         | Repositorio de estado en memoria (SSOT). Registra modelos `TareaResponse` y referencias a los `asyncio.Task` activos (`runners`) para permitir cancelación granular. |
+| **asyncio.Queue**       | Cola en memoria donde se transmiten únicamente los identificadores (`UUID`) de las tareas pendientes.                                                                |
+| **Worker Pool**         | Conjunto de $N$ corrutinas que consumen identificadores de la cola secuencialmente, despachan a la estrategia correspondiente y administran timeouts.                |
+| **ProcessPoolExecutor** | Pool de procesos separados del sistema operativo para aislar tareas CPU-bound (`hashear`) del GIL y del event loop.                                                  |
+| **Persistencia**        | Serializador de snapshots JSON ante apagado ordenado (`SIGINT`/`SIGTERM`) y recuperador de historial previo.                                                         |
+
+---
+
+## Guía de Uso de la API (Endpoints y Ejemplos `curl`)
+
+La API escucha en `http://localhost:8000`. Todas las tareas se crean mediante `POST /tareas` devolviendo inmediatamente un código `HTTP 202 Accepted` con la tarea en estado `pendiente`.
+
+### 1. Crear Tarea de Descarga I/O (`descargar`)
+
+Descarga concurrentemente un listado de URLs utilizando `httpx.AsyncClient` y `asyncio.gather`:
+
+```bash
+curl -s -X POST http://localhost:8000/tareas \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tipo": "descargar",
+    "urls": [
+      "https://jsonplaceholder.typicode.com/posts/1",
+      "https://jsonplaceholder.typicode.com/posts/2"
+    ],
+    "timeout": 10.0
+  }' | jq
+```
+
+### 2. Crear Tarea CPU-bound (`hashear`)
+
+Ejecuta hashing SHA-256 iterativo aislando el cómputo en un `ProcessPoolExecutor` para no bloquear el event loop:
+
+```bash
+curl -s -X POST http://localhost:8000/tareas \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tipo": "hashear",
+    "texto": "Computacion II 2026",
+    "iteraciones": 1000000,
+    "usar_executor": true,
+    "timeout": 30.0
+  }' | jq
+```
+
+### 3. Crear Tarea de Simulación I/O (`esperar`)
+
+Suspende la tarea durante $N$ segundos usando `await asyncio.sleep()` sin bloquear el hilo principal:
+
+```bash
+curl -s -X POST http://localhost:8000/tareas \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tipo": "esperar",
+    "segundos": 5.0,
+    "timeout": 10.0
+  }' | jq
+```
+
+### 4. Consultar Estado de una Tarea
+
+Obtiene los metadatos, estado y resultado o error de una tarea puntual:
+
+```bash
+curl -s http://localhost:8000/tareas/<TAREA_ID> | jq
+```
+
+### 5. Listar Tareas
+
+Recupera todas las tareas o filtra por estado (`pendiente`, `ejecutando`, `completada`, `fallida`, `cancelada`):
+
+```bash
+# Listar todas
+curl -s http://localhost:8000/tareas | jq
+
+# Filtrar por estado
+curl -s "http://localhost:8000/tareas?estado=completada" | jq
+```
+
+### 6. Cancelar una Tarea
+
+Interrumpe una tarea que se encuentre en estado `pendiente` o `ejecutando`:
+
+```bash
+curl -s -X DELETE http://localhost:8000/tareas/<TAREA_ID> | jq
+```
+
+### 7. Consultar Estadísticas del Sistema
+
+Muestra métricas agregadas de rendimiento, conteos por estado y tiempos de espera:
+
+```bash
+curl -s http://localhost:8000/estadisticas | jq
+```
+
+---
+
+## Justificación de Decisiones Técnicas y Arquitectónicas
+
+### 1. `asyncio.Queue` vs `queue.Queue`
+
+- **`queue.Queue` (Antipatrón en Asyncio)**: Diseñada para multihilos (`threading`). Sus métodos `get()` y `put()` utilizan primitivas de sincronización bloqueantes del sistema operativo . Si un worker invoca `queue.get()` sobre una cola vacía, el kernel suspende el hilo entero del proceso. Esto congela el event loop por completo: la API deja de responder peticiones HTTP y se dejan de ejecutar las otras tareas.
+- **`asyncio.Queue` (Enfoque Cooperativo)**: Basada en corrutinas y `asyncio.Future`. Cuando un worker ejecuta `await cola.get()` y la cola está vacía, la corrutina se suspende de forma cooperativa devolviendo el control al event loop. El loop continúa atendiendo tráfico de red y despachando otras corrutinas hasta que un `POST /tareas` invoca `cola.put()`, resolviendo el futuro y reactivando al worker.
+
+### 2. Sincronización en Memoria: Ausencia de Locks
+
+- **Concurrencia Cooperativa Monohilo**: En Python con `asyncio`, el runtime ejecuta en un único hilo del SO sin apropiación. Un cambio de contexto ocurre **exclusivamente** en los puntos donde se emite una sentencia explícita de `await`.
+- **Atomicidad de Operaciones de Diccionario**: Las operaciones del `TaskManager` sobre el diccionario en memoria (`dict[id] = ...`, lecturas y borrados) son instrucciones síncronas puras sin ningún `await` en el medio. Por ende, son atómicas frente al event loop y no sufren condiciones de carrera a nivel de estructura de datos.
+- **Consistencia de la Máquina de Estados**: Si bien entre la asignación de estado `EJECUTANDO` y `COMPLETADA` existen puntos de suspensión (`await runner`), las transiciones concurrentes (como la cancelación mediante `DELETE /tareas/{id}`) son deterministas: el endpoint cancela el runner y el worker atrapa `asyncio.CancelledError`, impidiendo que se sobreescriba el estado final (_lost update_). Un `asyncio.Lock` solo sería requerido si existiera un bloque de lectura-modificación-escritura con un `await` intermedio.
+
+### 3. `ProcessPoolExecutor` vs `ThreadPoolExecutor` para CPU-Bound (`hashear`)
+
+- **El Límite del GIL (Global Interpreter Lock)**: CPython utiliza un bloqueo global que impide la ejecución simultánea de instrucciones de Python en múltiples núcleos dentro de un mismo proceso. Si una tarea CPU-intensiva (como un bucle de hashing SHA-256) se delega a un `ThreadPoolExecutor`, ese hilo competirá ferozmente por el GIL.
+- **Inanición del Event Loop (_Thread Starvation_)**: Aunque el event loop se ejecute en su propio hilo, necesita adquirir el GIL para ejecutar los callbacks de I/O cuando `epoll` notifica la llegada de paquetes. El hilo de hashing monopoliza la CPU y retiene el GIL, provocando que la latencia de la API HTTP se degrade en varios órdenes de magnitud (demostrado empíricamente en la Medición 2).
+- **Aislamiento en Procesos Separados**: `ProcessPoolExecutor` crea procesos independientes del sistema operativo, cada uno con su propio espacio de memoria, intérprete y GIL independiente. El hilo principal de FastAPI delega el trabajo de forma no bloqueante a través de un descriptor de socket/pipe IPC, logrando verdadero paralelismo multicore sin afectar la capacidad de respuesta de la API.
+
+### 4. Cancelación Limpia y Timeouts mediante Runners
+
+- **Desacoplamiento de Ciclos de Vida**: Si un worker ejecutara directamente la lógica de negocio (`await estrategia.ejecutar(...)`), cancelar una tarea implicaría cancelar la corrutina del worker (`worker_task.cancel()`). La inyección de `asyncio.CancelledError` rompería el ciclo `while True`, terminando la vida del worker y vaciando progresivamente el pool.
+- **Aislamiento en `asyncio.Task` (`runner`)**: Cada tarea despachada se encapsula en una corrutina runner independiente (`runner = asyncio.create_task(...)`) cuya referencia viva se registra en el `TaskManager`.
+- **Cancelación Quirúrgica**: Ante un timeout (`asyncio.wait_for`) o una petición manual de cancelación (`DELETE /tareas/{id}`), el sistema cancela únicamente el `runner`. El worker permanece vivo, atrapa la excepción `CancelledError`, actualiza el estado a `CANCELADA`, invoca `cola.task_done()` y continúa ejecutando su ciclo esperando el próximo elemento de la cola.
 
 ---
 
@@ -64,11 +180,11 @@ Se ejecutó el benchmark automatizado [`benchmarks/medir_io.py`](benchmarks/medi
 
 #### Resultados Obtenidos
 
-| Modalidad | Tiempo Total | Speedup ($T_{sec} / T$) | Notas |
-|-----------|--------------|-------------------------|-------|
-| **Secuencial (Serie)** | **0.411 s** | $1.00\times$ (Base) | Cada request espera secuencialmente el RTT completo del anterior. |
-| **Concurrente Servidor** | **0.159 s** | **$2.58\times$** | Medición interna neta del worker procesando con `asyncio.gather`. |
-| **Concurrente End-to-End (Cliente)** | **0.192 s** | **$2.14\times$** | Incluye HTTP `POST`, encolado, polling cada 50ms y respuesta JSON. |
+| Modalidad                            | Tiempo Total | Speedup ($T_{sec} / T$) | Notas                                                              |
+| ------------------------------------ | ------------ | ----------------------- | ------------------------------------------------------------------ |
+| **Secuencial (Serie)**               | **0.411 s**  | $1.00\times$ (Base)     | Cada request espera secuencialmente el RTT completo del anterior.  |
+| **Concurrente Servidor**             | **0.159 s**  | **$2.58\times$**        | Medición interna neta del worker procesando con `asyncio.gather`.  |
+| **Concurrente End-to-End (Cliente)** | **0.192 s**  | **$2.14\times$**        | Incluye HTTP `POST`, encolado, polling cada 50ms y respuesta JSON. |
 
 #### Interpretación y Fundamento Teórico
 
@@ -85,6 +201,7 @@ El objetivo de esta medición es demostrar de manera cuantitativa el impacto de 
 #### Metodología
 
 Se ejecutó el benchmark automatizado [`benchmarks/medir_bloqueo.py`](benchmarks/medir_bloqueo.py) contra la API corriendo en Docker:
+
 1. Se encoló una tarea `hashear` con **3.000.000 de iteraciones SHA-256 encadenadas**.
 2. De forma concurrente, el cliente emitió ráfagas periódicas de peticiones de lectura a `GET /tareas` cada 50 ms para registrar las latencias experimentadas por otros usuarios.
 3. Se evaluaron dos condiciones:
@@ -93,14 +210,14 @@ Se ejecutó el benchmark automatizado [`benchmarks/medir_bloqueo.py`](benchmarks
 
 #### Resultados Obtenidos
 
-| Métrica de Rendimiento | Con ProcessPoolExecutor | Sin Executor (En Event Loop) | Impacto / Factor de Degradación |
-|------------------------|-------------------------|------------------------------|---------------------------------|
-| **Duración de la tarea (Servidor)** | 1.673 s | 1.664 s | Tiempo de cómputo equivalente (~1.67 s) |
-| **Pings `GET /tareas` Respondidos** | 34 | 33 | Cobertura durante la ventana de ejecución |
-| **Latencia Mínima** | **1.56 ms** | 62.92 ms | $40.3\times$ mayor |
-| **Latencia Mediana ($p_{50}$)** | **2.20 ms** | 866.28 ms | **$393.8\times$ mayor** |
-| **Latencia Promedio** | **4.02 ms** | 865.38 ms | **$215.0\times$ más lento** |
-| **Latencia Máxima** | **56.72 ms** | **1666.60 ms** | **$29.4\times$ más lento** (~1.67 s de espera) |
+| Métrica de Rendimiento              | Con ProcessPoolExecutor | Sin Executor (En Event Loop) | Impacto / Factor de Degradación                |
+| ----------------------------------- | ----------------------- | ---------------------------- | ---------------------------------------------- |
+| **Duración de la tarea (Servidor)** | 1.673 s                 | 1.664 s                      | Tiempo de cómputo equivalente (~1.67 s)        |
+| **Pings `GET /tareas` Respondidos** | 34                      | 33                           | Cobertura durante la ventana de ejecución      |
+| **Latencia Mínima**                 | **1.56 ms**             | 62.92 ms                     | $40.3\times$ mayor                             |
+| **Latencia Mediana ($p_{50}$)**     | **2.20 ms**             | 866.28 ms                    | **$393.8\times$ mayor**                        |
+| **Latencia Promedio**               | **4.02 ms**             | 865.38 ms                    | **$215.0\times$ más lento**                    |
+| **Latencia Máxima**                 | **56.72 ms**            | **1666.60 ms**               | **$29.4\times$ más lento** (~1.67 s de espera) |
 
 #### Interpretación y Fundamento Teórico
 
@@ -117,12 +234,12 @@ Se evaluó la capacidad de absorción y procesamiento de la plataforma ante ráf
 #### Resultados Empíricos
 
 | Tareas ($N$) | T. Encolado | T. Total Drenado | Throughput Real | POST Latencia ($p_{50}$) | POST Latencia Máx | Espera en Cola Promedio | Espera en Cola Máx |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **10** | 0.067 s | 0.293 s | **34.17 t/s** | 59.39 ms | 66.43 ms | 0.061 s | 0.147 s |
-| **50** | 0.146 s | 0.965 s | **51.80 t/s** | 99.65 ms | 121.26 ms | 0.395 s | 0.801 s |
-| **100** | 0.298 s | 1.841 s | **54.31 t/s** | 84.26 ms | 216.87 ms | 0.742 s | 1.436 s |
-| **500** | 2.413 s | 8.531 s | **58.61 t/s** | 148.06 ms | 1346.61 ms | 3.074 s | 6.035 s |
-| **1000** | 4.867 s | 17.035 s | **58.70 t/s** | 152.44 ms | 1598.57 ms | 6.085 s | 12.067 s |
+| :----------: | :---------: | :--------------: | :-------------: | :----------------------: | :---------------: | :---------------------: | :----------------: |
+|    **10**    |   0.067 s   |     0.293 s      |  **34.17 t/s**  |         59.39 ms         |     66.43 ms      |         0.061 s         |      0.147 s       |
+|    **50**    |   0.146 s   |     0.965 s      |  **51.80 t/s**  |         99.65 ms         |     121.26 ms     |         0.395 s         |      0.801 s       |
+|   **100**    |   0.298 s   |     1.841 s      |  **54.31 t/s**  |         84.26 ms         |     216.87 ms     |         0.742 s         |      1.436 s       |
+|   **500**    |   2.413 s   |     8.531 s      |  **58.61 t/s**  |        148.06 ms         |    1346.61 ms     |         3.074 s         |      6.035 s       |
+|   **1000**   |   4.867 s   |     17.035 s     |  **58.70 t/s**  |        152.44 ms         |    1598.57 ms     |         6.085 s         |      12.067 s      |
 
 #### Interpretación y Fundamento Teórico
 
