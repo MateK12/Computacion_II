@@ -74,7 +74,7 @@ Este calendario está estructurado en 3 fases semanales (Sprints), dejando los �
 | **Día 17** | Vie 30/10 | **Medición 3 (Techo del Pool)**: Incrementar tareas concurrentes hasta saturar. Encontrar el límite del sistema (sockets, CPU, RAM) y explicar el porqué. | 1.5h | [x] |
 | **Día 18** | Sáb 31/10 | **Redacción del `README.md` (Parte 1)**: Diagrama de arquitectura, guía de uso con ejemplos `curl`, justificación de decisiones (Queue, Executor, Lock, Cancelación). | 2h | [x] |
 | **Día 19** | Dom 01/11 | **Redacción del `README.md` (Parte 2)**: Incorporar tablas de mediciones, interpretación de números, conexión con las clases teóricas (select/epoll, event loop, GIL) y lo aprendido. | 2h | [x] |
-| **Día 20** | Lun 02/11 | **Buffer de Contingencia & Simulación Oral**: Repasar preguntas de examen oral de la cátedra. Verificar `docker compose up --build` desde cero. Limpieza de código (PEP 8). | 1.5h | [ ] |
+| **Día 20** | Lun 02/11 | **Buffer de Contingencia & Simulación Oral**: Repasar preguntas de examen oral de la cátedra. Verificar `docker compose up --build` desde cero. Limpieza de código (PEP 8). | 1.5h | [x] |
 | **Día 21** | **Mar 03/11** | **ENTREGA FINAL (Clase 24)**: Verificar repositorio público en GitHub, links, badges y entregar en horario de clase. | 30m | [ ] |
 
 ---
