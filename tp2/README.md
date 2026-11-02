@@ -135,7 +135,7 @@ Muestra métricas agregadas de rendimiento, conteos por estado y tiempos de espe
 curl -s http://localhost:8000/estadisticas | jq
 ```
 
-## duracion_servidor
+---
 
 ## Justificación de Decisiones Técnicas y Arquitectónicas
 
@@ -248,6 +248,24 @@ Se evaluó la capacidad de absorción y procesamiento de la plataforma ante ráf
    Los datos empíricos demuestran cómo el sistema amortiza la sobrecarga de arranque y converge asintóticamente a su asíntota teórica: desde $34.17\text{ t/s}$ en lotes pequeños hasta **$58.70\text{ t/s}$** con 1.000 tareas (**$97.8\%$ de eficiencia teórica**).
 2. **Buffer Elástico y Ley de Little**: La tasa de llegada de tareas a la API superó con creces la capacidad de drenado ($\lambda \approx 205\text{ t/s} > \mu \approx 60\text{ t/s}$). La cola monohilo `asyncio.Queue` actuó como amortiguador en memoria sin descartar peticiones. Siguiendo la Ley de Little ($L = \lambda W$), a mayor saturación acumulada, el tiempo de espera en cola escala de manera proporcional: mientras las primeras tareas son tomadas de inmediato, las últimas tareas de la tanda de 1.000 esperaron hasta $12.067\text{ s}$ antes de ser atendidas por un worker libre.
 3. **Desacoplamiento entre Ingestión HTTP y Workers**: A pesar de inyectar 1.000 peticiones en ráfaga, la latencia mediana de `POST /tareas` ($p_{50}$) se mantuvo en el rango de los $\sim 150\text{ ms}$. Esto demuestra la efectividad de la arquitectura asíncrona: la API confirma la recepción y cede el trabajo a la cola de forma no bloqueante, aislando a los clientes web de la congestión interna del pool.
+
+---
+
+## Limitaciones del Sistema
+
+1. **Inanición FIFO y Falta de Priorización (_Head-of-Line Blocking_)**: La cola `asyncio.Queue` despacha en orden estricto de llegada. Tareas de cómputo prolongado o descargas extensas ocupan todos los workers disponibles, forzando a que tareas rápidas o urgentes sufran esperas en cola.
+2. **Ausencia de limite de memoria en diccionario de tareas y Riesgo de OOM**: Al estar inicializada sin límite de capacidad (`maxsize=0`), ráfagas extremas de solicitudes consumen memoria de forma no acotada en el proceso. Si el kernel del sistema operativo dispara el _OOM-killer_ (`SIGKILL`), el proceso termina de inmediato sin posibilidad de ejecutar el ciclo de apagado ordenado ni volcar snapshots.
+3. **Punto Único de Falla y Acoplamiento en Memoria**: El estado del sistema reside en un diccionario en RAM dentro de un único proceso. No existe un broker de mensajería externo, ni replicación distribuida, por lo que una caída catastrófica del unico nodo, hace que se caiga todo el sistemas.
+4. **Dimensionamiento Estático del Pool de Workers**: La cantidad de workers se fija al arrancar el contenedor mediante variables de entorno (`N_WORKERS`). El sistema carece de auto-escalado horizontal o dinámico para reaccionar elásticamente a incrementos repentinos de la demanda.
+
+---
+
+## Lecciones Aprendidas
+
+1. **Concurrencia Cooperativa en la Práctica**: La comparación entre `for ... await` (ejecución serial encadenada) y `asyncio.gather` (planificación concurrente en el event loop) consolidó el entendimiento del modelo cooperativo: las corrutinas no corren en paralelo físico sino que se intercalan cediendo voluntariamente el control al scheduler en cada punto de espera I/O.
+2. **Aislamiento de Cargas y el Impacto del GIL**: La necesidad de separar tareas I/O-bound (`httpx`, `asyncio.sleep`) de CPU-bound (`hashear`) evidenció el límite del Global Interpreter Lock en CPython y la importancia de utilizar procesos independientes (`ProcessPoolExecutor`) para evitar congelar el bucle de eventos.
+3. **Ecosistema Moderno con FastAPI y Pydantic**: El modelado declarativo con Pydantic y el enrutamiento nativo asíncrono de FastAPI demostraron una alta ergonomía, tipado estricto y validación automática de datos frente a alternativas web sincrónicas.
+4. **Resiliencia y Ciclo de Vida del Software**: El diseño de apagado ordenado (_graceful shutdown_) mediante captura de señales Unix (`SIGINT`/`SIGTERM`) y la configuración adecuada en Docker (modo `exec`) evidenciaron la importancia de coordinar el runtime de la aplicación con el sistema operativo para garantizar la integridad de datos.
 
 ---
 
