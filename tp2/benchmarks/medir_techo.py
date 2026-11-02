@@ -45,7 +45,7 @@ async def _encolar_tarea(
         return tarea_id, latencia_ms
 
 
-async def _esperar_drenado_pool(
+async def _esperar_drenado_pool( #pool para saber como vienen las tareas
     client: httpx.AsyncClient,
     base_url: str,
     intervalo: float = INTERVALO_SONDEO,
@@ -94,8 +94,8 @@ async def ejecutar_tanda(
         latencias_post = [lat for _, lat in resultados_encolado]
         tarea_ids = {tid for tid, _ in resultados_encolado}
 
-        # 2. Esperar drenado completo del pool
-        await _esperar_drenado_pool(client, base_url)
+        # 2. Esperar drenado completo del pool (que se terminen todas las tareas)
+        await _esperar_drenado_pool(client, base_url) 
         duracion_total = time.perf_counter() - t_inicio_total
 
         # 3. Recopilar métricas de las tareas del lote

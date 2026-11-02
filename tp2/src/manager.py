@@ -69,6 +69,8 @@ class TaskManager:
         """Alias de obtener() con soporte para valor por defecto."""
         return self._tareas.get(tarea_id, default)
 
+    #permiten que se trate como un diccionario
+
     def __getitem__(self, tarea_id: UUID) -> TareaResponse:
         return self._tareas[tarea_id]
 

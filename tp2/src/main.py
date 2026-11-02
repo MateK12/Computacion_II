@@ -25,7 +25,7 @@ from src.persistencia import reportar_volcados_previos
 from src.pool import apagar_sistema, iniciar_workers
 
 # Instancia global de TaskManager para persistencia en memoria (Single Source of Truth)
-manager = TaskManager()
+manager = TaskManager() #no depende de asyncio
 # Alias tareas para compatibilidad con tests e integraciones existentes
 tareas = manager
 
@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     reportar_volcados_previos(dir_snapshots)
 
     n_workers = int(os.getenv("N_WORKERS", "3"))
-    cola: asyncio.Queue[UUID] = asyncio.Queue()
+    cola: asyncio.Queue[UUID] = asyncio.Queue() #crear cola
 
     app.state.cola = cola
     app.state.manager = manager

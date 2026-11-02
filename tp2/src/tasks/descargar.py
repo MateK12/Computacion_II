@@ -46,7 +46,7 @@ class DescargarStrategy(TareaStrategy):
         async with httpx.AsyncClient(
             timeout=timeout, follow_redirects=True
         ) as client:
-            tareas = [self._descargar_una(client, url) for url in datos.urls]
+            tareas = [self._descargar_una(client, url) for url in datos.urls] #concurrentemente
             resultados = await asyncio.gather(*tareas, return_exceptions=True) #permite devolver las excepciones
 
         reportes: list[dict[str, Any]] = []

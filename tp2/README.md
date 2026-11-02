@@ -135,7 +135,7 @@ Muestra métricas agregadas de rendimiento, conteos por estado y tiempos de espe
 curl -s http://localhost:8000/estadisticas | jq
 ```
 
----
+## duracion_servidor
 
 ## Justificación de Decisiones Técnicas y Arquitectónicas
 
@@ -189,7 +189,7 @@ Se ejecutó el benchmark automatizado [`benchmarks/medir_io.py`](benchmarks/medi
 #### Interpretación y Fundamento Teórico
 
 1. **Multiplexación de sockets sin bloqueo**: En el enfoque secuencial, el tiempo total es la suma de las latencias de cada petición ($T_{sec} \approx \sum_{i=1}^{20} RTT_i$). En contraste, `DescargarStrategy` inicializa todos los sockets de red casi en simultáneo. El sistema operativo notifica al event loop vía `epoll` a medida que llegan los paquetes de cada socket.
-2. **Acotamiento por el request más lento**: En un esquema concurrente ideal, el tiempo total no es la suma sino que converge al tiempo del request individual con mayor latencia más el overhead del runtime ($T_{conc} \approx \max_{i}(RTT_i) + \varepsilon$). Por eso se observa un speedup de más del doble ($2.58\times$) aun compitiendo por el mismo ancho de banda local.
+2. **Acotamiento por el request más lento**: En un esquema concurrente ideal, el tiempo total no es la suma sino que converge al tiempo del request individual con mayor latencia ($T_{conc} \approx \max_{i}(RTT_i)$). Por eso se observa un speedup de más del doble ($2.58\times$) aun compitiendo por el mismo ancho de banda local.
 3. **Overhead del ciclo de vida REST**: La diferencia entre el tiempo neto del servidor (0.159 s) y el percibido por el cliente (0.192 s) refleja la sobrecarga del protocolo HTTP externo, el serializado Pydantic, la contención mínima de la cola y el intervalo de sondeo (polling) del cliente.
 
 ---
